@@ -570,49 +570,105 @@ def show_care_tab(res: dict):
     
     care_records = get_care_records(res['id'])
     
+    amount_options = ["---", "完食", "ほぼ完食", "半分", "少し", "食べなかった"]
+    stool_options = ["---", "普通", "軟便", "硬便", "下痢"]
+    
+    st.markdown("**🌡️ 体温**")
+    col1, col2 = st.columns(2)
+    with col1:
+        temp1_time = st.time_input("検温時刻①", value=None, key="temp1_time")
+    with col2:
+        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, key="temp1_val")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        temp2_time = st.time_input("検温時刻②", value=None, key="temp2_time")
+    with col2:
+        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, key="temp2_val")
+    
+    if st.button("🌡️ 体温を記録", key="save_temp", use_container_width=True):
+        if temp1_time:
+            add_care_record(res['id'], 'temperature', f"{temp1_time.strftime('%H:%M')} {temp1_val}℃")
+        if temp2_time:
+            add_care_record(res['id'], 'temperature', f"{temp2_time.strftime('%H:%M')} {temp2_val}℃")
+        st.rerun()
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
     st.markdown("**🍽️ 食事**")
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🍚 食事開始", key="meal_start", use_container_width=True):
-            add_care_record(res['id'], 'meal_start')
-            st.rerun()
+        lunch_amount = st.selectbox("昼食", amount_options, key="lunch_amount")
     with col2:
-        if st.button("✅ 食事終了", key="meal_end", use_container_width=True):
-            add_care_record(res['id'], 'meal_end')
-            st.rerun()
+        snack_amount = st.selectbox("おやつ", amount_options, key="snack_amount")
     with col3:
-        if st.button("🍪 おやつ", key="snack", use_container_width=True):
-            add_care_record(res['id'], 'snack')
-            st.rerun()
+        dinner_amount = st.selectbox("夕食", amount_options, key="dinner_amount")
     
-    st.markdown("**😴 睡眠**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("😴 お昼寝開始", key="sleep_start", use_container_width=True):
-            add_care_record(res['id'], 'sleep_start')
-            st.rerun()
-    with col2:
-        if st.button("☀️ お昼寝終了", key="sleep_end", use_container_width=True):
-            add_care_record(res['id'], 'sleep_end')
-            st.rerun()
-    with col3:
-        if st.button("🍼 ミルク", key="milk", use_container_width=True):
-            add_care_record(res['id'], 'milk')
-            st.rerun()
+    if st.button("🍽️ 食事を記録", key="save_meal", use_container_width=True):
+        if lunch_amount != "---":
+            add_care_record(res['id'], 'lunch', f"昼食: {lunch_amount}")
+        if snack_amount != "---":
+            add_care_record(res['id'], 'snack', f"おやつ: {snack_amount}")
+        if dinner_amount != "---":
+            add_care_record(res['id'], 'dinner', f"夕食: {dinner_amount}")
+        st.rerun()
     
-    st.markdown("**🚽 排泄**")
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    st.markdown("**🍼 ミルク**")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("💧 おしっこ", key="diaper_wet", use_container_width=True):
-            add_care_record(res['id'], 'diaper_wet')
-            st.rerun()
+        milk_time = st.time_input("時刻", value=None, key="milk_time")
     with col2:
-        if st.button("💩 うんち", key="diaper_solid", use_container_width=True):
-            add_care_record(res['id'], 'diaper_solid')
-            st.rerun()
+        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=100, step=10, key="milk_amount")
     
-    with st.expander("📝 その他の記録"):
-        other_note = st.text_input("内容", placeholder="例：機嫌よく遊んでいました", label_visibility="collapsed")
+    if st.button("🍼 ミルクを記録", key="save_milk", use_container_width=True):
+        if milk_time:
+            add_care_record(res['id'], 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
+        st.rerun()
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    st.markdown("**💩 排便（3回分）**")
+    for i in range(1, 4):
+        col1, col2 = st.columns(2)
+        with col1:
+            stool_time = st.time_input(f"時刻{i}", value=None, key=f"stool_time_{i}")
+        with col2:
+            stool_type = st.selectbox(f"便の様子{i}", stool_options, key=f"stool_type_{i}")
+        
+        if st.button(f"💩 排便{i}を記録", key=f"save_stool_{i}", use_container_width=True):
+            if stool_time and stool_type != "---":
+                add_care_record(res['id'], 'stool', f"{stool_time.strftime('%H:%M')} {stool_type}")
+                st.rerun()
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    st.markdown("**😴 お昼寝**")
+    col1, col2 = st.columns(2)
+    with col1:
+        nap_start = st.time_input("開始", value=None, key="nap_start")
+    with col2:
+        nap_end = st.time_input("終了", value=None, key="nap_end")
+    
+    if st.button("😴 お昼寝を記録", key="save_nap", use_container_width=True):
+        if nap_start and nap_end:
+            add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜{nap_end.strftime('%H:%M')}")
+        elif nap_start:
+            add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜")
+        st.rerun()
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    st.markdown("**💧 おしっこ**")
+    if st.button("💧 おしっこを記録", key="diaper_wet", use_container_width=True):
+        add_care_record(res['id'], 'diaper_wet', datetime.now().strftime('%H:%M'))
+        st.rerun()
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    
+    with st.expander("📝 その他・自由記述"):
+        other_note = st.text_area("内容", placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed")
         if st.button("記録する", key="other", use_container_width=True):
             if other_note:
                 add_care_record(res['id'], 'other', other_note)
@@ -625,7 +681,7 @@ def show_care_tab(res: dict):
         for record in care_records:
             record_time = record.get('record_time', '')[:16].replace('T', ' ') if record.get('record_time') else ''
             record_type = get_record_type_label(record.get('record_type', ''))
-            details = record.get('details', '')
+            details = record.get('details', '') or ''
             st.markdown(f"- **{record_time}** {record_type} {details}")
     else:
         st.info("まだ記録がありません")

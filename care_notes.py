@@ -2,16 +2,20 @@ from datetime import datetime
 from typing import List, Dict
 
 RECORD_TYPES = {
+    "temperature": "体温",
+    "lunch": "昼食",
+    "snack": "おやつ",
+    "dinner": "夕食",
+    "milk": "ミルク",
+    "stool": "排便",
+    "nap": "お昼寝",
+    "diaper_wet": "おしっこ",
+    "other": "その他",
     "meal_start": "食事開始",
     "meal_end": "食事終了",
     "sleep_start": "お昼寝開始",
     "sleep_end": "お昼寝終了",
-    "diaper_wet": "排泄（おしっこ）",
     "diaper_solid": "排泄（うんち）",
-    "milk": "ミルク",
-    "snack": "おやつ",
-    "play": "遊び",
-    "other": "その他",
 }
 
 def format_time(iso_time: str) -> str:
@@ -25,44 +29,35 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
     if not care_records:
         return f"{child_name}ちゃんは本日も元気に過ごされました。"
     
+    temperatures = []
     meals = []
-    sleeps = []
+    milks = []
+    stools = []
+    naps = []
     diapers = []
     others = []
-    
-    sleep_start = None
-    meal_start = None
     
     for record in sorted(care_records, key=lambda x: x.get('record_time', '')):
         record_type = record.get('record_type', '')
         record_time = format_time(record.get('record_time', ''))
-        details = record.get('details', '')
+        details = record.get('details', '') or ''
         
-        if record_type == 'meal_start':
-            meal_start = record_time
-        elif record_type == 'meal_end':
-            if meal_start:
-                meals.append(f"{meal_start}〜{record_time}")
-            else:
-                meals.append(record_time)
-            meal_start = None
-        elif record_type == 'sleep_start':
-            sleep_start = record_time
-        elif record_type == 'sleep_end':
-            if sleep_start:
-                sleeps.append(f"{sleep_start}〜{record_time}")
-            else:
-                sleeps.append(record_time)
-            sleep_start = None
-        elif record_type in ['diaper_wet', 'diaper_solid']:
-            diapers.append((record_time, RECORD_TYPES.get(record_type, record_type)))
-        elif record_type == 'milk':
-            others.append(f"ミルク({record_time}){details}")
+        if record_type == 'temperature':
+            temperatures.append(details)
+        elif record_type in ['lunch', 'dinner']:
+            meals.append(details)
         elif record_type == 'snack':
-            others.append(f"おやつ({record_time}){details}")
-        else:
-            if details:
-                others.append(f"{details}({record_time})")
+            meals.append(details)
+        elif record_type == 'milk':
+            milks.append(details)
+        elif record_type == 'stool':
+            stools.append(details)
+        elif record_type == 'nap':
+            naps.append(details)
+        elif record_type == 'diaper_wet':
+            diapers.append(details or record_time)
+        elif record_type == 'other':
+            others.append(details)
     
     parts = []
     
@@ -70,23 +65,23 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
     parts.append(f"【本日のご様子】{child_name}{suffix}")
     parts.append("")
     
+    if temperatures:
+        parts.append(f"🌡️ 体温: {', '.join(temperatures)}")
+    
     if meals:
         parts.append(f"🍚 食事: {', '.join(meals)}")
-        parts.append("　しっかり食べられました。")
     
-    if sleeps:
-        parts.append(f"😴 お昼寝: {', '.join(sleeps)}")
-        parts.append("　ぐっすり眠れました。")
+    if milks:
+        parts.append(f"🍼 ミルク: {', '.join(milks)}")
+    
+    if naps:
+        parts.append(f"😴 お昼寝: {', '.join(naps)}")
+    
+    if stools:
+        parts.append(f"💩 排便: {', '.join(stools)}")
     
     if diapers:
-        diaper_summary = []
-        wet_count = sum(1 for _, t in diapers if 'おしっこ' in t)
-        solid_count = sum(1 for _, t in diapers if 'うんち' in t)
-        if wet_count:
-            diaper_summary.append(f"おしっこ{wet_count}回")
-        if solid_count:
-            diaper_summary.append(f"うんち{solid_count}回")
-        parts.append(f"🚽 排泄: {', '.join(diaper_summary)}")
+        parts.append(f"💧 おしっこ: {len(diapers)}回")
     
     if others:
         parts.append(f"📝 その他: {', '.join(others)}")
