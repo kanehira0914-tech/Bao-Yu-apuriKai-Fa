@@ -272,14 +272,55 @@ def update_attendance(reservation_id: int, data: Dict):
     conn.commit()
     conn.close()
 
-def add_care_record(reservation_id: int, record_type: str, details: str = ""):
+def add_care_record(reservation_id: int, record_type: str, details: str = "", index: int = 0):
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-        INSERT INTO care_records (reservation_id, record_type, record_time, details)
-        VALUES (?, ?, ?, ?)
-    ''', (reservation_id, record_type, datetime.now().isoformat(), details))
+    unique_types = ['lunch', 'snack', 'dinner', 'nap']
+    indexed_types = ['temperature', 'stool']
+    
+    if record_type in unique_types:
+        cursor.execute('''
+            SELECT id FROM care_records
+            WHERE reservation_id = ? AND record_type = ?
+        ''', (reservation_id, record_type))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute('''
+                UPDATE care_records
+                SET details = ?, record_time = ?
+                WHERE id = ?
+            ''', (details, datetime.now().isoformat(), existing['id']))
+        else:
+            cursor.execute('''
+                INSERT INTO care_records (reservation_id, record_type, record_time, details)
+                VALUES (?, ?, ?, ?)
+            ''', (reservation_id, record_type, datetime.now().isoformat(), details))
+    elif record_type in indexed_types:
+        record_key = f"{record_type}_{index}"
+        cursor.execute('''
+            SELECT id FROM care_records
+            WHERE reservation_id = ? AND record_type = ?
+        ''', (reservation_id, record_key))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute('''
+                UPDATE care_records
+                SET details = ?, record_time = ?
+                WHERE id = ?
+            ''', (details, datetime.now().isoformat(), existing['id']))
+        else:
+            cursor.execute('''
+                INSERT INTO care_records (reservation_id, record_type, record_time, details)
+                VALUES (?, ?, ?, ?)
+            ''', (reservation_id, record_key, datetime.now().isoformat(), details))
+    else:
+        cursor.execute('''
+            INSERT INTO care_records (reservation_id, record_type, record_time, details)
+            VALUES (?, ?, ?, ?)
+        ''', (reservation_id, record_type, datetime.now().isoformat(), details))
     
     conn.commit()
     conn.close()

@@ -3,11 +3,16 @@ from typing import List, Dict
 
 RECORD_TYPES = {
     "temperature": "体温",
+    "temperature_1": "体温①",
+    "temperature_2": "体温②",
     "lunch": "昼食",
     "snack": "おやつ",
     "dinner": "夕食",
     "milk": "ミルク",
     "stool": "排便",
+    "stool_1": "排便①",
+    "stool_2": "排便②",
+    "stool_3": "排便③",
     "nap": "お昼寝",
     "diaper_wet": "おしっこ",
     "other": "その他",
@@ -42,7 +47,7 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
         record_time = format_time(record.get('record_time', ''))
         details = record.get('details', '') or ''
         
-        if record_type == 'temperature':
+        if record_type.startswith('temperature'):
             temperatures.append(details)
         elif record_type in ['lunch', 'dinner']:
             meals.append(details)
@@ -50,7 +55,7 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
             meals.append(details)
         elif record_type == 'milk':
             milks.append(details)
-        elif record_type == 'stool':
+        elif record_type.startswith('stool'):
             stools.append(details)
         elif record_type == 'nap':
             naps.append(details)
