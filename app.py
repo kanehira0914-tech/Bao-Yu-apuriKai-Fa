@@ -22,6 +22,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+if 'success_message' not in st.session_state:
+    st.session_state.success_message = None
+
+def show_success_message():
+    if st.session_state.success_message:
+        st.success(st.session_state.success_message)
+        st.session_state.success_message = None
+
+def set_success_message(msg: str):
+    st.session_state.success_message = msg
+
 st.markdown("""
 <style>
     /* モバイルファースト - 基本スタイル */
@@ -568,6 +579,8 @@ def show_attendance_tab(res: dict):
 def show_care_tab(res: dict):
     st.markdown("### 🍚 ケア記録")
     
+    show_success_message()
+    
     care_records = get_care_records(res['id'])
     
     amount_options = ["---", "完食", "ほぼ完食", "半分", "少し", "食べなかった"]
@@ -595,7 +608,7 @@ def show_care_tab(res: dict):
             add_care_record(res['id'], 'temperature', f"{temp2_time.strftime('%H:%M')} {temp2_val}℃", index=2)
             recorded = True
         if recorded:
-            st.toast("✅ 体温を記録しました")
+            set_success_message("✅ 体温を記録しました")
         st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -609,7 +622,7 @@ def show_care_tab(res: dict):
     if st.button("🍚 昼食を記録", key="save_lunch", use_container_width=True):
         if lunch_time and lunch_amount != "---":
             add_care_record(res['id'], 'lunch', f"{lunch_time.strftime('%H:%M')} {lunch_amount}")
-            st.toast("✅ 昼食を記録しました")
+            set_success_message("✅ 昼食を記録しました")
             st.rerun()
     
     st.markdown("**🍪 おやつ**")
@@ -621,7 +634,7 @@ def show_care_tab(res: dict):
     if st.button("🍪 おやつを記録", key="save_snack", use_container_width=True):
         if snack_time and snack_amount != "---":
             add_care_record(res['id'], 'snack', f"{snack_time.strftime('%H:%M')} {snack_amount}")
-            st.toast("✅ おやつを記録しました")
+            set_success_message("✅ おやつを記録しました")
             st.rerun()
     
     st.markdown("**🍽️ 夕食**")
@@ -633,7 +646,7 @@ def show_care_tab(res: dict):
     if st.button("🍽️ 夕食を記録", key="save_dinner", use_container_width=True):
         if dinner_time and dinner_amount != "---":
             add_care_record(res['id'], 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
-            st.toast("✅ 夕食を記録しました")
+            set_success_message("✅ 夕食を記録しました")
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -648,7 +661,7 @@ def show_care_tab(res: dict):
     if st.button("🍼 ミルクを記録", key="save_milk", use_container_width=True):
         if milk_time:
             add_care_record(res['id'], 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
-            st.toast("✅ ミルクを記録しました")
+            set_success_message("✅ ミルクを記録しました")
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -664,7 +677,7 @@ def show_care_tab(res: dict):
         if st.button(f"💩 排便{i}を記録", key=f"save_stool_{i}", use_container_width=True):
             if stool_time and stool_type != "---":
                 add_care_record(res['id'], 'stool', f"{stool_time.strftime('%H:%M')} {stool_type}", index=i)
-                st.toast(f"✅ 排便{i}を記録しました")
+                set_success_message(f"✅ 排便{i}を記録しました")
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -679,10 +692,10 @@ def show_care_tab(res: dict):
     if st.button("😴 お昼寝を記録", key="save_nap", use_container_width=True):
         if nap_start and nap_end:
             add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜{nap_end.strftime('%H:%M')}")
-            st.toast("✅ お昼寝を記録しました")
+            set_success_message("✅ お昼寝を記録しました")
         elif nap_start:
             add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜")
-            st.toast("✅ お昼寝を記録しました")
+            set_success_message("✅ お昼寝を記録しました")
         st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -690,7 +703,7 @@ def show_care_tab(res: dict):
     st.markdown("**💧 おしっこ**")
     if st.button("💧 おしっこを記録", key="diaper_wet", use_container_width=True):
         add_care_record(res['id'], 'diaper_wet', datetime.now().strftime('%H:%M'))
-        st.toast("✅ おしっこを記録しました")
+        set_success_message("✅ おしっこを記録しました")
         st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -700,7 +713,7 @@ def show_care_tab(res: dict):
         if st.button("記録する", key="other", use_container_width=True):
             if other_note:
                 add_care_record(res['id'], 'other', other_note)
-                st.toast("✅ 記録しました")
+                set_success_message("✅ 記録しました")
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
