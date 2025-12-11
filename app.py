@@ -298,6 +298,7 @@ def show_child_card(res: dict, show_quick_actions: bool = False):
             with col1:
                 if st.button("📝 詳細を開く", key=f"detail_{res['id']}", use_container_width=True):
                     st.session_state.selected_reservation_id = res['id']
+                    navigate_to("record")
                     st.rerun()
             with col2:
                 if not has_checkin:
