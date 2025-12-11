@@ -164,8 +164,21 @@ init_database()
 
 if 'selected_reservation_id' not in st.session_state:
     st.session_state.selected_reservation_id = None
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "home"
+if 'menu_index' not in st.session_state:
+    st.session_state.menu_index = 0
+
+MENU_OPTIONS = ["🏠 ホーム", "📁 データ取込", "👶 本日の児童", "📋 予約一覧", "📝 実績入力", "🧾 領収書発行"]
+
+def navigate_to(page_name: str):
+    page_map = {
+        "home": 0,
+        "import": 1,
+        "today": 2,
+        "reservations": 3,
+        "record": 4,
+        "receipt": 5
+    }
+    st.session_state.menu_index = page_map.get(page_name, 0)
 
 def main():
     st.sidebar.markdown("## 🐻 こぐまハウス")
@@ -173,9 +186,15 @@ def main():
     
     menu = st.sidebar.radio(
         "メニュー",
-        ["🏠 ホーム", "📁 データ取込", "👶 本日の児童", "📋 予約一覧", "📝 実績入力", "🧾 領収書発行"],
+        MENU_OPTIONS,
+        index=st.session_state.menu_index,
+        key="main_menu",
         label_visibility="collapsed"
     )
+    
+    current_index = MENU_OPTIONS.index(menu)
+    if current_index != st.session_state.menu_index:
+        st.session_state.menu_index = current_index
     
     if "ホーム" in menu:
         show_home()
@@ -211,20 +230,21 @@ def show_home():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("👶 本日の児童", type="primary", use_container_width=True):
-            st.session_state.current_page = "today"
-            st.query_params["page"] = "today"
+            navigate_to("today")
             st.rerun()
     with col2:
         if st.button("📝 実績入力", type="primary", use_container_width=True):
-            st.session_state.current_page = "record"
+            navigate_to("record")
             st.rerun()
     
     col1, col2 = st.columns(2)
     with col1:
         if st.button("📁 データ取込", use_container_width=True):
+            navigate_to("import")
             st.rerun()
     with col2:
         if st.button("🧾 領収書発行", use_container_width=True):
+            navigate_to("receipt")
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
