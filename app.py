@@ -14,6 +14,13 @@ from pricing import (
     FACILITY_FEE, FACILITY_FEE_SITTER, CANCEL_FEE_RATE,
     SNACK_PRICE, HOUSEWORK_OPTION
 )
+from calc_logic import (
+    calculate_temporary_care, calculate_facility_sitter, calculate_home_sitter,
+    is_holiday_or_weekend, get_time_options, format_breakdown_text,
+    FACILITY_FEE_TEMPORARY, FACILITY_FEE_SITTER as CALC_FACILITY_FEE_SITTER,
+    SNACK_PRICE as CALC_SNACK_PRICE, HOUSEWORK_OPTION as CALC_HOUSEWORK_OPTION,
+    SIBLING_DISCOUNT_PER_HOUR, SIBLING_ADDITION_PER_HOUR
+)
 from pdf_generator import generate_receipt_pdf
 from care_notes import generate_care_summary, RECORD_TYPES, get_record_type_label
 
@@ -209,6 +216,9 @@ def main():
     if st.sidebar.button("🧾 領収書発行", use_container_width=True):
         navigate_to("receipt")
         st.rerun()
+    if st.sidebar.button("🧮 料金計算", use_container_width=True):
+        navigate_to("fee_calc")
+        st.rerun()
     
     page = st.session_state.current_page
     
@@ -224,6 +234,8 @@ def main():
         show_record_input()
     elif page == "receipt":
         show_receipt_generation()
+    elif page == "fee_calc":
+        show_fee_calculator()
     else:
         show_home()
 
@@ -1088,6 +1100,247 @@ def show_receipt_generation():
                 st.session_state.selected_reservation_id = res['id']
                 st.rerun()
         st.divider()
+
+
+def show_fee_calculator():
+    st.markdown('<div class="main-header">🧮 料金計算シミュレーター</div>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#8B7355;">サービス種別ごとの料金を自動計算</p>', unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["🏠 一時預かり保育", "🏢 ベビーシッター（施設型）", "🏡 自宅ベビーシッター"])
+    
+    time_options = get_time_options()
+    time_labels = [f"{t.hour}:{t.minute:02d}" for t in time_options]
+    lunch_opts = [0, 400, 500, 600, 700, 800]
+    
+    with tab1:
+        st.markdown("### 一時預かり保育")
+        st.markdown("""
+        <div style="background:#f8f9fa;padding:0.8rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem;">
+        <b>料金体系:</b><br>
+        ・通常時間 (9:00-17:00): 平日 ¥2,000/h、土日祝 ¥3,200/h<br>
+        ・時間外 (7:00-9:00, 17:00-22:00): 平日 ¥2,800/h、土日祝 ¥4,000/h<br>
+        ・施設利用料: ¥550/回<br>
+        ・兄弟割引: △¥400/h
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            use_date_1 = st.date_input("利用日", value=date.today(), key="temp_date")
+        with col2:
+            is_hol_1 = is_holiday_or_weekend(use_date_1)
+            st.markdown(f"**曜日区分:** {'🔴 土日祝' if is_hol_1 else '🔵 平日'}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            start_idx_1 = st.selectbox("開始時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=8, key="temp_start")
+        with col2:
+            end_idx_1 = st.selectbox("終了時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=40, key="temp_end")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            include_facility_1 = st.checkbox("施設利用料を含める", value=True, key="temp_facility")
+        with col2:
+            has_sibling_1 = st.checkbox(f"兄弟あり（△¥{SIBLING_DISCOUNT_PER_HOUR}/h）", key="temp_sibling")
+        with col3:
+            snack_1 = st.checkbox(f"おやつ（¥{CALC_SNACK_PRICE}）", key="temp_snack")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            lunch_1 = st.selectbox("昼食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="temp_lunch")
+        with col2:
+            dinner_1 = st.selectbox("夕食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="temp_dinner")
+        
+        if st.button("💰 計算する", type="primary", use_container_width=True, key="calc_temp"):
+            result = calculate_temporary_care(
+                use_date=use_date_1,
+                start_time=time_options[start_idx_1],
+                end_time=time_options[end_idx_1],
+                has_sibling=has_sibling_1,
+                include_facility_fee=include_facility_1,
+                snack=snack_1,
+                lunch_price=lunch_1,
+                dinner_price=dinner_1
+            )
+            
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown("### 📊 計算結果")
+            
+            for warning in result.warnings:
+                st.warning(warning)
+            
+            st.markdown(f"**{result.day_type}** / 利用時間: {result.total_minutes}分（{result.total_minutes/60:.2f}時間）")
+            
+            st.markdown("#### 時間帯別内訳")
+            for item in result.breakdown:
+                st.markdown(f"- {item.description}: {item.hours}h × ¥{item.rate:,} = **¥{item.amount:,}**")
+            
+            st.markdown(f"**基本料金小計:** ¥{result.base_fee:,}")
+            
+            if result.facility_fee > 0:
+                st.markdown(f"+ 施設利用料: ¥{result.facility_fee:,}")
+            if result.sibling_adjustment != 0:
+                st.markdown(f"- 兄弟割引: △¥{abs(result.sibling_adjustment):,}")
+            if result.meal_fee > 0:
+                st.markdown(f"+ 食事代: ¥{result.meal_fee:,}")
+            
+            st.markdown(f"## 💴 合計: ¥{result.total:,}")
+    
+    with tab2:
+        st.markdown("### ベビーシッター（施設型）")
+        st.markdown("""
+        <div style="background:#f8f9fa;padding:0.8rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem;">
+        <b>料金体系:</b><br>
+        ・通常時間 (9:00-17:00): 平日 ¥3,200/h、土日祝 ¥4,000/h<br>
+        ・時間外 (7:00-9:00, 17:00-22:00): 平日 ¥4,000/h、土日祝 ¥4,500/h<br>
+        ・施設利用料: ¥2,200/回<br>
+        ・<b style="color:#dc3545;">最低利用: 2時間以上</b>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            use_date_2 = st.date_input("利用日", value=date.today(), key="fac_date")
+        with col2:
+            is_hol_2 = is_holiday_or_weekend(use_date_2)
+            st.markdown(f"**曜日区分:** {'🔴 土日祝' if is_hol_2 else '🔵 平日'}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            start_idx_2 = st.selectbox("開始時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=8, key="fac_start")
+        with col2:
+            end_idx_2 = st.selectbox("終了時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=40, key="fac_end")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            include_facility_2 = st.checkbox("施設利用料を含める", value=True, key="fac_facility")
+        with col2:
+            snack_2 = st.checkbox(f"おやつ（¥{CALC_SNACK_PRICE}）", key="fac_snack")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            lunch_2 = st.selectbox("昼食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="fac_lunch")
+        with col2:
+            dinner_2 = st.selectbox("夕食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="fac_dinner")
+        
+        if st.button("💰 計算する", type="primary", use_container_width=True, key="calc_fac"):
+            result = calculate_facility_sitter(
+                use_date=use_date_2,
+                start_time=time_options[start_idx_2],
+                end_time=time_options[end_idx_2],
+                include_facility_fee=include_facility_2,
+                snack=snack_2,
+                lunch_price=lunch_2,
+                dinner_price=dinner_2
+            )
+            
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown("### 📊 計算結果")
+            
+            for warning in result.warnings:
+                st.warning(warning)
+            
+            st.markdown(f"**{result.day_type}** / 利用時間: {result.total_minutes}分（{result.total_minutes/60:.2f}時間）")
+            
+            st.markdown("#### 時間帯別内訳")
+            for item in result.breakdown:
+                st.markdown(f"- {item.description}: {item.hours}h × ¥{item.rate:,} = **¥{item.amount:,}**")
+            
+            st.markdown(f"**基本料金小計:** ¥{result.base_fee:,}")
+            
+            if result.facility_fee > 0:
+                st.markdown(f"+ 施設利用料: ¥{result.facility_fee:,}")
+            if result.meal_fee > 0:
+                st.markdown(f"+ 食事代: ¥{result.meal_fee:,}")
+            
+            st.markdown(f"## 💴 合計: ¥{result.total:,}")
+    
+    with tab3:
+        st.markdown("### 自宅ベビーシッター")
+        st.markdown("""
+        <div style="background:#f8f9fa;padding:0.8rem;border-radius:8px;margin-bottom:1rem;font-size:0.9rem;">
+        <b>料金体系:</b><br>
+        ・通常時間 (9:00-17:00): 平日 ¥3,500/h、土日祝 ¥3,900/h<br>
+        ・時間外 (7:00-9:00, 17:00-20:00): 平日 ¥3,800/h、土日祝 ¥4,200/h<br>
+        ・早朝夜間 (~7:00, 20:00~): 平日 ¥4,000/h、土日祝 ¥4,400/h<br>
+        ・兄弟加算: +¥1,000/h<br>
+        ・<b style="color:#dc3545;">最低利用: 3時間以上</b>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            use_date_3 = st.date_input("利用日", value=date.today(), key="home_date")
+        with col2:
+            is_hol_3 = is_holiday_or_weekend(use_date_3)
+            st.markdown(f"**曜日区分:** {'🔴 土日祝' if is_hol_3 else '🔵 平日'}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            start_idx_3 = st.selectbox("開始時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=8, key="home_start")
+        with col2:
+            end_idx_3 = st.selectbox("終了時刻", range(len(time_options)), 
+                format_func=lambda i: time_labels[i], index=40, key="home_end")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            has_sibling_3 = st.checkbox(f"兄弟あり（+¥{SIBLING_ADDITION_PER_HOUR}/h）", key="home_sibling")
+        with col2:
+            housework_3 = st.checkbox(f"家事代行・沐浴（¥{CALC_HOUSEWORK_OPTION}）", key="home_housework")
+        
+        transport_3 = st.number_input("交通費（円）", value=0, step=100, min_value=0, key="home_transport")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            snack_3 = st.checkbox(f"おやつ（¥{CALC_SNACK_PRICE}）", key="home_snack")
+        with col2:
+            lunch_3 = st.selectbox("昼食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="home_lunch")
+        with col3:
+            dinner_3 = st.selectbox("夕食", lunch_opts, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="home_dinner")
+        
+        if st.button("💰 計算する", type="primary", use_container_width=True, key="calc_home"):
+            result = calculate_home_sitter(
+                use_date=use_date_3,
+                start_time=time_options[start_idx_3],
+                end_time=time_options[end_idx_3],
+                has_sibling=has_sibling_3,
+                housework_option=housework_3,
+                transport_fee=transport_3,
+                snack=snack_3,
+                lunch_price=lunch_3,
+                dinner_price=dinner_3
+            )
+            
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown("### 📊 計算結果")
+            
+            for warning in result.warnings:
+                st.warning(warning)
+            
+            st.markdown(f"**{result.day_type}** / 利用時間: {result.total_minutes}分（{result.total_minutes/60:.2f}時間）")
+            
+            st.markdown("#### 時間帯別内訳")
+            for item in result.breakdown:
+                st.markdown(f"- {item.description}: {item.hours}h × ¥{item.rate:,} = **¥{item.amount:,}**")
+            
+            st.markdown(f"**基本料金小計:** ¥{result.base_fee:,}")
+            
+            if result.sibling_adjustment > 0:
+                st.markdown(f"+ 兄弟加算: ¥{result.sibling_adjustment:,}")
+            if result.option_fee > 0:
+                st.markdown(f"+ 家事代行・沐浴: ¥{result.option_fee:,}")
+            if result.transport_fee > 0:
+                st.markdown(f"+ 交通費: ¥{result.transport_fee:,}")
+            if result.meal_fee > 0:
+                st.markdown(f"+ 食事代: ¥{result.meal_fee:,}")
+            
+            st.markdown(f"## 💴 合計: ¥{result.total:,}")
+
 
 if __name__ == "__main__":
     main()
