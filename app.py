@@ -708,10 +708,43 @@ def show_care_tab(res: dict):
     
     if care_records:
         for record in care_records:
-            record_time = record.get('record_time', '')[:16].replace('T', ' ') if record.get('record_time') else ''
-            record_type = get_record_type_label(record.get('record_type', ''))
+            system_time = record.get('record_time', '')[:16].replace('T', ' ') if record.get('record_time') else ''
+            record_type_raw = record.get('record_type', '')
+            record_type = get_record_type_label(record_type_raw)
             details = record.get('details', '') or ''
-            st.markdown(f"- **{record_time}** {record_type} {details}")
+            
+            if record_type_raw.startswith('temperature'):
+                parts = details.split(' ', 1)
+                if len(parts) == 2:
+                    display = f"検温時間 {parts[0]} {record_type} {parts[1]}"
+                else:
+                    display = f"{record_type} {details}"
+            elif record_type_raw in ['lunch', 'snack', 'dinner']:
+                parts = details.split(' ', 1)
+                if len(parts) == 2:
+                    display = f"{record_type} {parts[0]} {parts[1]}"
+                else:
+                    display = f"{record_type} {details}"
+            elif record_type_raw == 'milk':
+                parts = details.split(' ', 1)
+                if len(parts) == 2:
+                    display = f"{record_type} {parts[0]} {parts[1]}"
+                else:
+                    display = f"{record_type} {details}"
+            elif record_type_raw.startswith('stool'):
+                parts = details.split(' ', 1)
+                if len(parts) == 2:
+                    display = f"{record_type} {parts[0]} {parts[1]}"
+                else:
+                    display = f"{record_type} {details}"
+            elif record_type_raw == 'nap':
+                display = f"{record_type} {details}"
+            elif record_type_raw == 'diaper_wet':
+                display = f"{record_type} {details}"
+            else:
+                display = f"{record_type} {details}"
+            
+            st.markdown(f'- {display} <span style="color:#999;font-size:0.8em;">（記録: {system_time}）</span>', unsafe_allow_html=True)
     else:
         st.info("まだ記録がありません")
 
