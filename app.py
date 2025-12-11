@@ -164,50 +164,51 @@ init_database()
 
 if 'selected_reservation_id' not in st.session_state:
     st.session_state.selected_reservation_id = None
-if 'menu_index' not in st.session_state:
-    st.session_state.menu_index = 0
-
-MENU_OPTIONS = ["🏠 ホーム", "📁 データ取込", "👶 本日の児童", "📋 予約一覧", "📝 実績入力", "🧾 領収書発行"]
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "home"
 
 def navigate_to(page_name: str):
-    page_map = {
-        "home": 0,
-        "import": 1,
-        "today": 2,
-        "reservations": 3,
-        "record": 4,
-        "receipt": 5
-    }
-    st.session_state.menu_index = page_map.get(page_name, 0)
+    st.session_state.current_page = page_name
 
 def main():
     st.sidebar.markdown("## 🐻 こぐまハウス")
     st.sidebar.markdown("---")
     
-    menu = st.sidebar.radio(
-        "メニュー",
-        MENU_OPTIONS,
-        index=st.session_state.menu_index,
-        key="main_menu",
-        label_visibility="collapsed"
-    )
+    if st.sidebar.button("🏠 ホーム", use_container_width=True):
+        navigate_to("home")
+        st.rerun()
+    if st.sidebar.button("📁 データ取込", use_container_width=True):
+        navigate_to("import")
+        st.rerun()
+    if st.sidebar.button("👶 本日の児童", use_container_width=True):
+        navigate_to("today")
+        st.rerun()
+    if st.sidebar.button("📋 予約一覧", use_container_width=True):
+        navigate_to("reservations")
+        st.rerun()
+    if st.sidebar.button("📝 実績入力", use_container_width=True):
+        navigate_to("record")
+        st.rerun()
+    if st.sidebar.button("🧾 領収書発行", use_container_width=True):
+        navigate_to("receipt")
+        st.rerun()
     
-    current_index = MENU_OPTIONS.index(menu)
-    if current_index != st.session_state.menu_index:
-        st.session_state.menu_index = current_index
+    page = st.session_state.current_page
     
-    if "ホーム" in menu:
+    if page == "home":
         show_home()
-    elif "データ取込" in menu:
+    elif page == "import":
         show_data_import()
-    elif "本日の児童" in menu:
+    elif page == "today":
         show_today_children()
-    elif "予約一覧" in menu:
+    elif page == "reservations":
         show_reservations()
-    elif "実績入力" in menu:
+    elif page == "record":
         show_record_input()
-    elif "領収書発行" in menu:
+    elif page == "receipt":
         show_receipt_generation()
+    else:
+        show_home()
 
 def show_home():
     st.markdown('<div class="main-header">🐻 こぐまハウス</div>', unsafe_allow_html=True)
