@@ -531,11 +531,13 @@ def show_attendance_tab(res: dict):
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    st.markdown("### ❌ キャンセル")
-    
-    if res.get('is_cancelled'):
+    if res.get('check_in_time'):
+        st.info("✅ 登園済のためキャンセルはできません")
+    elif res.get('is_cancelled'):
+        st.markdown("### ❌ キャンセル")
         st.warning(f"キャンセル済み（{res.get('cancel_type', '')}）")
     else:
+        st.markdown("### ❌ キャンセル")
         cancel_type = st.radio(
             "キャンセル種別",
             ["キャンセルしない", "当日キャンセル（50%請求）", "無料キャンセル"],
