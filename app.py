@@ -595,23 +595,38 @@ def show_care_tab(res: dict):
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    st.markdown("**🍽️ 食事**")
-    col1, col2, col3 = st.columns(3)
+    st.markdown("**🍽️ 昼食**")
+    col1, col2 = st.columns(2)
     with col1:
-        lunch_amount = st.selectbox("昼食", amount_options, key="lunch_amount")
+        lunch_time = st.time_input("昼食時刻", value=None, key="lunch_time")
     with col2:
-        snack_amount = st.selectbox("おやつ", amount_options, key="snack_amount")
-    with col3:
-        dinner_amount = st.selectbox("夕食", amount_options, key="dinner_amount")
+        lunch_amount = st.selectbox("昼食の量", amount_options, key="lunch_amount")
+    if st.button("🍚 昼食を記録", key="save_lunch", use_container_width=True):
+        if lunch_time and lunch_amount != "---":
+            add_care_record(res['id'], 'lunch', f"{lunch_time.strftime('%H:%M')} {lunch_amount}")
+            st.rerun()
     
-    if st.button("🍽️ 食事を記録", key="save_meal", use_container_width=True):
-        if lunch_amount != "---":
-            add_care_record(res['id'], 'lunch', f"昼食: {lunch_amount}")
-        if snack_amount != "---":
-            add_care_record(res['id'], 'snack', f"おやつ: {snack_amount}")
-        if dinner_amount != "---":
-            add_care_record(res['id'], 'dinner', f"夕食: {dinner_amount}")
-        st.rerun()
+    st.markdown("**🍪 おやつ**")
+    col1, col2 = st.columns(2)
+    with col1:
+        snack_time = st.time_input("おやつ時刻", value=None, key="snack_time")
+    with col2:
+        snack_amount = st.selectbox("おやつの量", amount_options, key="snack_amount")
+    if st.button("🍪 おやつを記録", key="save_snack", use_container_width=True):
+        if snack_time and snack_amount != "---":
+            add_care_record(res['id'], 'snack', f"{snack_time.strftime('%H:%M')} {snack_amount}")
+            st.rerun()
+    
+    st.markdown("**🍽️ 夕食**")
+    col1, col2 = st.columns(2)
+    with col1:
+        dinner_time = st.time_input("夕食時刻", value=None, key="dinner_time")
+    with col2:
+        dinner_amount = st.selectbox("夕食の量", amount_options, key="dinner_amount")
+    if st.button("🍽️ 夕食を記録", key="save_dinner", use_container_width=True):
+        if dinner_time and dinner_amount != "---":
+            add_care_record(res['id'], 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
+            st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
