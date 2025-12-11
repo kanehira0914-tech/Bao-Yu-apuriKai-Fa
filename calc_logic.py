@@ -347,9 +347,9 @@ def format_breakdown_text(result: CalculationResult) -> str:
 
 
 def get_time_options() -> List[time]:
-    """15分刻みの時刻オプションを生成"""
+    """15分刻みの時刻オプションを生成（0:00〜23:45）"""
     options = []
-    for hour in range(7, 23):
+    for hour in range(0, 24):
         for minute in [0, 15, 30, 45]:
             options.append(time(hour, minute))
     return options

@@ -1134,10 +1134,10 @@ def show_fee_calculator():
         col1, col2 = st.columns(2)
         with col1:
             start_idx_1 = st.selectbox("開始時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=8, key="temp_start")
+                format_func=lambda i: time_labels[i], index=36, key="temp_start")
         with col2:
             end_idx_1 = st.selectbox("終了時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=40, key="temp_end")
+                format_func=lambda i: time_labels[i], index=68, key="temp_end")
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -1210,10 +1210,10 @@ def show_fee_calculator():
         col1, col2 = st.columns(2)
         with col1:
             start_idx_2 = st.selectbox("開始時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=8, key="fac_start")
+                format_func=lambda i: time_labels[i], index=36, key="fac_start")
         with col2:
             end_idx_2 = st.selectbox("終了時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=40, key="fac_end")
+                format_func=lambda i: time_labels[i], index=68, key="fac_end")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -1282,10 +1282,10 @@ def show_fee_calculator():
         col1, col2 = st.columns(2)
         with col1:
             start_idx_3 = st.selectbox("開始時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=8, key="home_start")
+                format_func=lambda i: time_labels[i], index=36, key="home_start")
         with col2:
             end_idx_3 = st.selectbox("終了時刻", range(len(time_options)), 
-                format_func=lambda i: time_labels[i], index=40, key="home_end")
+                format_func=lambda i: time_labels[i], index=68, key="home_end")
         
         col1, col2 = st.columns(2)
         with col1:
