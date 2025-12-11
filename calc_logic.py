@@ -1,12 +1,16 @@
 """
 保育料金計算ロジック
 3つのサービス種別に対応した料金計算モジュール
+※料金設定はconfig.pyのFEE_CONFIGから読み込み
 """
 
 from datetime import datetime, date, time, timedelta
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 import jpholiday
+
+from config import FEE_CONFIG
+
 
 @dataclass
 class TimeSlot:
@@ -19,6 +23,7 @@ class TimeSlot:
     rate_weekday: int
     rate_holiday: int
 
+
 @dataclass
 class FeeBreakdownItem:
     """料金内訳の1項目"""
@@ -26,6 +31,7 @@ class FeeBreakdownItem:
     hours: float
     rate: int
     amount: int
+
 
 @dataclass
 class CalculationResult:
@@ -44,35 +50,75 @@ class CalculationResult:
     warnings: List[str]
 
 
-TEMPORARY_CARE_SLOTS = [
-    TimeSlot("通常", 9, 0, 17, 0, 2000, 3200),
-    TimeSlot("時間外（早朝）", 7, 0, 9, 0, 2800, 4000),
-    TimeSlot("時間外（夜間）", 17, 0, 22, 0, 2800, 4000),
-]
+def _build_slots_from_config(service_key: str) -> List[TimeSlot]:
+    """config.pyの設定からTimeSlotリストを生成"""
+    config = FEE_CONFIG[service_key]
+    slots = []
+    for slot_data in config["slots"]:
+        slots.append(TimeSlot(
+            name=slot_data["name"],
+            start_hour=slot_data["start_hour"],
+            start_minute=slot_data["start_minute"],
+            end_hour=slot_data["end_hour"],
+            end_minute=slot_data["end_minute"],
+            rate_weekday=slot_data["rate_weekday"],
+            rate_holiday=slot_data["rate_holiday"],
+        ))
+    return slots
 
-FACILITY_SITTER_SLOTS = [
-    TimeSlot("通常", 9, 0, 17, 0, 3200, 4000),
-    TimeSlot("時間外（早朝）", 7, 0, 9, 0, 4000, 4500),
-    TimeSlot("時間外（夜間）", 17, 0, 22, 0, 4000, 4500),
-]
 
-HOME_SITTER_SLOTS = [
-    TimeSlot("通常", 9, 0, 17, 0, 3500, 3900),
-    TimeSlot("時間外（早朝）", 7, 0, 9, 0, 3800, 4200),
-    TimeSlot("時間外（夕方）", 17, 0, 20, 0, 3800, 4200),
-    TimeSlot("早朝夜間（深夜前）", 0, 0, 7, 0, 4000, 4400),
-    TimeSlot("早朝夜間（夜間）", 20, 0, 24, 0, 4000, 4400),
-]
+def get_temporary_care_slots() -> List[TimeSlot]:
+    return _build_slots_from_config("temporary_care")
 
-FACILITY_FEE_TEMPORARY = 550
-FACILITY_FEE_SITTER = 2200
-SIBLING_DISCOUNT_PER_HOUR = 400
-SIBLING_ADDITION_PER_HOUR = 1000
-SNACK_PRICE = 150
-HOUSEWORK_OPTION = 1100
 
-MIN_HOURS_FACILITY_SITTER = 2
-MIN_HOURS_HOME_SITTER = 3
+def get_facility_sitter_slots() -> List[TimeSlot]:
+    return _build_slots_from_config("facility_sitter")
+
+
+def get_home_sitter_slots() -> List[TimeSlot]:
+    return _build_slots_from_config("home_sitter")
+
+
+def get_facility_fee_temporary() -> int:
+    return FEE_CONFIG["temporary_care"]["facility_fee"]
+
+
+def get_facility_fee_sitter() -> int:
+    return FEE_CONFIG["facility_sitter"]["facility_fee"]
+
+
+def get_sibling_discount_per_hour() -> int:
+    return FEE_CONFIG["temporary_care"]["sibling_discount_per_hour"]
+
+
+def get_sibling_addition_per_hour() -> int:
+    return FEE_CONFIG["home_sitter"]["sibling_addition_per_hour"]
+
+
+def get_snack_price() -> int:
+    return FEE_CONFIG["common"]["snack_price"]
+
+
+def get_housework_option_fee() -> int:
+    return FEE_CONFIG["home_sitter"]["housework_option_fee"]
+
+
+def get_min_hours_facility_sitter() -> int:
+    return FEE_CONFIG["facility_sitter"]["min_hours"]
+
+
+def get_min_hours_home_sitter() -> int:
+    return FEE_CONFIG["home_sitter"]["min_hours"]
+
+
+FACILITY_FEE_TEMPORARY = get_facility_fee_temporary()
+FACILITY_FEE_SITTER = get_facility_fee_sitter()
+SIBLING_DISCOUNT_PER_HOUR = get_sibling_discount_per_hour()
+SIBLING_ADDITION_PER_HOUR = get_sibling_addition_per_hour()
+SNACK_PRICE = get_snack_price()
+HOUSEWORK_OPTION = get_housework_option_fee()
+MIN_HOURS_FACILITY_SITTER = get_min_hours_facility_sitter()
+MIN_HOURS_HOME_SITTER = get_min_hours_home_sitter()
 
 
 def is_holiday_or_weekend(check_date: date) -> bool:
@@ -164,25 +210,26 @@ def calculate_temporary_care(
     total_minutes = end_minutes - start_minutes
     total_hours = total_minutes / 60
     
-    breakdown = calculate_time_breakdown(start_time, end_time, TEMPORARY_CARE_SLOTS, is_holiday)
+    slots = get_temporary_care_slots()
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
     
     base_fee = sum(item.amount for item in breakdown)
     
-    facility_fee = FACILITY_FEE_TEMPORARY if include_facility_fee else 0
+    facility_fee = get_facility_fee_temporary() if include_facility_fee else 0
     
     sibling_adjustment = 0
     if has_sibling:
-        sibling_adjustment = -int(total_hours * SIBLING_DISCOUNT_PER_HOUR)
+        sibling_adjustment = -int(total_hours * get_sibling_discount_per_hour())
     
     meal_fee = 0
     if snack:
-        meal_fee += SNACK_PRICE
+        meal_fee += get_snack_price()
     meal_fee += lunch_price + dinner_price
     
     total = base_fee + facility_fee + sibling_adjustment + meal_fee
     
     return CalculationResult(
-        service_type="一時預かり保育",
+        service_type=FEE_CONFIG["temporary_care"]["name"],
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,
@@ -217,25 +264,27 @@ def calculate_facility_sitter(
     total_minutes = end_minutes - start_minutes
     total_hours = total_minutes / 60
     
+    min_hours = get_min_hours_facility_sitter()
     warnings = []
-    if total_hours < MIN_HOURS_FACILITY_SITTER:
-        warnings.append(f"⚠️ 最低利用時間は{MIN_HOURS_FACILITY_SITTER}時間です（現在: {total_hours:.1f}時間）")
+    if total_hours < min_hours:
+        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {total_hours:.1f}時間）")
     
-    breakdown = calculate_time_breakdown(start_time, end_time, FACILITY_SITTER_SLOTS, is_holiday)
+    slots = get_facility_sitter_slots()
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
     
     base_fee = sum(item.amount for item in breakdown)
     
-    facility_fee = FACILITY_FEE_SITTER if include_facility_fee else 0
+    facility_fee = get_facility_fee_sitter() if include_facility_fee else 0
     
     meal_fee = 0
     if snack:
-        meal_fee += SNACK_PRICE
+        meal_fee += get_snack_price()
     meal_fee += lunch_price + dinner_price
     
     total = base_fee + facility_fee + meal_fee
     
     return CalculationResult(
-        service_type="ベビーシッター（施設型）",
+        service_type=FEE_CONFIG["facility_sitter"]["name"],
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,
@@ -272,29 +321,31 @@ def calculate_home_sitter(
     total_minutes = end_minutes - start_minutes
     total_hours = total_minutes / 60
     
+    min_hours = get_min_hours_home_sitter()
     warnings = []
-    if total_hours < MIN_HOURS_HOME_SITTER:
-        warnings.append(f"⚠️ 最低利用時間は{MIN_HOURS_HOME_SITTER}時間です（現在: {total_hours:.1f}時間）")
+    if total_hours < min_hours:
+        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {total_hours:.1f}時間）")
     
-    breakdown = calculate_time_breakdown(start_time, end_time, HOME_SITTER_SLOTS, is_holiday)
+    slots = get_home_sitter_slots()
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
     
     base_fee = sum(item.amount for item in breakdown)
     
     sibling_adjustment = 0
     if has_sibling:
-        sibling_adjustment = int(total_hours * SIBLING_ADDITION_PER_HOUR)
+        sibling_adjustment = int(total_hours * get_sibling_addition_per_hour())
     
-    option_fee = HOUSEWORK_OPTION if housework_option else 0
+    option_fee = get_housework_option_fee() if housework_option else 0
     
     meal_fee = 0
     if snack:
-        meal_fee += SNACK_PRICE
+        meal_fee += get_snack_price()
     meal_fee += lunch_price + dinner_price
     
     total = base_fee + sibling_adjustment + option_fee + transport_fee + meal_fee
     
     return CalculationResult(
-        service_type="自宅ベビーシッター",
+        service_type=FEE_CONFIG["home_sitter"]["name"],
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,

@@ -13,9 +13,10 @@
 ## ファイル構成
 ```
 ├── app.py              # メインStreamlitアプリ
+├── config.py           # 料金設定マスタ（FEE_CONFIG辞書）
 ├── database.py         # SQLiteデータベース操作
 ├── pricing.py          # 料金計算ロジック（予約画面用）
-├── calc_logic.py       # 料金計算シミュレーター専用ロジック
+├── calc_logic.py       # 料金計算シミュレーター専用ロジック（config.pyから読込）
 ├── pdf_generator.py    # PDF領収書生成
 ├── care_notes.py       # ケア記録・連絡帳テキスト生成
 ├── fonts/
@@ -23,6 +24,10 @@
 ├── receipts/           # 生成PDF保存先
 └── nursery.db          # SQLiteデータベース
 ```
+
+## 料金設定の保守
+料金改定時は `config.py` の `FEE_CONFIG` 辞書の数値を変更するだけで対応可能。
+計算ロジック（calc_logic.py）の修正は不要。
 
 ## サービス区分・料金体系
 
