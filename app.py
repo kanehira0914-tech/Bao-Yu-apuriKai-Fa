@@ -10,7 +10,9 @@ from database import (
 )
 from pricing import (
     calculate_total_price, calculate_extension_fee, needs_certification,
-    FACILITY_FEE, CANCEL_FEE_RATE
+    calculate_auto_fee, is_holiday, get_rate_table,
+    FACILITY_FEE, FACILITY_FEE_SITTER, CANCEL_FEE_RATE,
+    SNACK_PRICE, HOUSEWORK_OPTION
 )
 from pdf_generator import generate_receipt_pdf
 from care_notes import generate_care_summary, RECORD_TYPES, get_record_type_label
@@ -778,6 +780,13 @@ def show_pricing_tab(res: dict):
     service_category = res.get('service_category', '')
     st.info(f"サービス: **{service_category}**")
     
+    calc_mode = st.radio(
+        "計算方法",
+        ["自動計算", "手動入力"],
+        horizontal=True,
+        key="calc_mode"
+    )
+    
     staff_list = get_staff_list()
     staff_names = ["（選択してください）"] + [s['name'] for s in staff_list]
     
@@ -790,80 +799,182 @@ def show_pricing_tab(res: dict):
         index=staff_index
     )
     
-    base_price = st.number_input(
-        "基本保育料（円）",
-        value=res.get('base_price', 0) or 0,
-        step=500,
-        min_value=0
-    )
-    
-    facility_fee = 0
-    if service_category == "一時預かり保育":
-        include_facility = st.checkbox(
-            f"施設利用料を含める（¥{FACILITY_FEE}）",
-            value=bool(res.get('facility_fee'))
-        )
-        facility_fee = FACILITY_FEE if include_facility else 0
-    
-    transport_fee = 0
-    if service_category == "ベビーシッター（自宅派遣型）":
-        transport_fee = st.number_input(
-            "交通費（円）",
-            value=res.get('transport_fee', 0) or 0,
-            step=100,
-            min_value=0
-        )
-    
-    extension_fee = res.get('extension_fee', 0) or 0
-    if extension_fee > 0:
-        st.warning(f"⏰ 延長料金: ¥{extension_fee:,}")
-    
-    with st.expander("🏷️ 割引・追加"):
-        discount_options = ["なし", "兄弟割引", "リピート割引", "その他"]
-        discount1 = st.selectbox("割引①", discount_options, index=0)
-        discount1_amount = 0
-        if discount1 != "なし":
-            discount1_amount = st.number_input("割引①金額", value=0, step=100, min_value=0, key="d1_amt")
-        
-        discount2 = st.selectbox("割引②", discount_options, index=0)
-        discount2_amount = 0
-        if discount2 != "なし":
-            discount2_amount = st.number_input("割引②金額", value=0, step=100, min_value=0, key="d2_amt")
-        
-        additional_fee = st.number_input("追加料金", value=res.get('additional_fee', 0) or 0, step=100, min_value=0)
-        additional_note = st.text_input("追加料金メモ", value=res.get('additional_note', '') or '')
-    
     is_cancelled = res.get('is_cancelled', 0)
     
-    pricing = calculate_total_price(
-        service_category=service_category,
-        base_price=base_price,
-        facility_fee=facility_fee,
-        option_price=res.get('option_price', 0) or 0,
-        extension_fee=extension_fee,
-        transport_fee=transport_fee,
-        discount1_amount=discount1_amount,
-        discount2_amount=discount2_amount,
-        additional_fee=additional_fee,
-        is_cancelled=bool(is_cancelled),
-        include_facility_fee=(service_category == "一時預かり保育" and facility_fee > 0)
-    )
-    
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    
-    st.markdown("### 📊 料金内訳")
-    st.markdown(f"""
-    - 基本保育料: ¥{pricing['base_price']:,}
-    {"- 施設利用料: ¥" + f"{pricing['facility_fee']:,}" if pricing['facility_fee'] else ""}
-    {"- 交通費: ¥" + f"{pricing['transport_fee']:,}" if pricing['transport_fee'] else ""}
-    {"- 延長料金: ¥" + f"{pricing['extension_fee']:,}" if pricing['extension_fee'] else ""}
-    {"- 追加料金: ¥" + f"{pricing['additional_fee']:,}" if pricing['additional_fee'] else ""}
-    """)
+    if calc_mode == "自動計算":
+        st.markdown("#### ⏰ 利用時間")
+        
+        res_date_str = res.get('reservation_date', '')
+        try:
+            if res_date_str:
+                use_date = datetime.strptime(res_date_str, "%Y-%m-%d").date()
+            else:
+                use_date = date.today()
+        except:
+            use_date = date.today()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            use_date_input = st.date_input("利用日", value=use_date, key="use_date")
+        with col2:
+            holiday_auto = is_holiday(use_date_input)
+            is_holiday_check = st.checkbox(
+                "土日祝として計算",
+                value=holiday_auto,
+                key="is_holiday"
+            )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            start_time_str = res.get('scheduled_start', '09:00') or '09:00'
+            try:
+                default_start = datetime.strptime(start_time_str.replace('：', ':'), "%H:%M").time()
+            except:
+                default_start = datetime.strptime("09:00", "%H:%M").time()
+            start_time = st.time_input("開始時刻", value=default_start, key="start_time")
+        with col2:
+            end_time_str = res.get('scheduled_end', '17:00') or '17:00'
+            try:
+                default_end = datetime.strptime(end_time_str.replace('：', ':'), "%H:%M").time()
+            except:
+                default_end = datetime.strptime("17:00", "%H:%M").time()
+            end_time = st.time_input("終了時刻", value=default_end, key="end_time")
+        
+        st.markdown("#### 🍽️ オプション")
+        
+        has_sibling = st.checkbox(
+            "兄弟あり" + ("（△400円/時間）" if service_category == "一時預かり保育" else "（+1,000円/時間）" if service_category == "ベビーシッター（自宅派遣型）" else ""),
+            key="has_sibling"
+        )
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            snack = st.checkbox(f"おやつ（¥{SNACK_PRICE}）", key="snack")
+        with col2:
+            lunch_options = [0, 400, 500, 600, 700, 800]
+            lunch_price = st.selectbox("昼食", lunch_options, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="lunch")
+        with col3:
+            dinner_options = [0, 400, 500, 600, 700, 800]
+            dinner_price = st.selectbox("夕食", dinner_options, format_func=lambda x: f"¥{x}" if x > 0 else "なし", key="dinner")
+        
+        housework_option = False
+        transport_fee = 0
+        if service_category == "ベビーシッター（自宅派遣型）":
+            col1, col2 = st.columns(2)
+            with col1:
+                housework_option = st.checkbox(f"家事代行・沐浴（¥{HOUSEWORK_OPTION}）", key="housework")
+            with col2:
+                transport_fee = st.number_input("交通費（円）", value=res.get('transport_fee', 0) or 0, step=100, min_value=0, key="transport")
+        
+        auto_result = calculate_auto_fee(
+            service_type=service_category,
+            start_time=start_time,
+            end_time=end_time,
+            use_date=use_date_input,
+            is_holiday_manual=is_holiday_check,
+            has_sibling=has_sibling,
+            snack=snack,
+            lunch_price=lunch_price,
+            dinner_price=dinner_price,
+            housework_option=housework_option,
+            transport_fee=transport_fee
+        )
+        
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown("### 📊 料金内訳")
+        
+        st.markdown(f"**{auto_result['day_type']}** / {auto_result['total_hours']}時間（{auto_result['total_minutes']}分）")
+        
+        for item in auto_result['breakdown']:
+            if item['amount'] != 0:
+                if item['amount'] < 0:
+                    st.markdown(f"- {item['item']}: △¥{abs(item['amount']):,}")
+                else:
+                    st.markdown(f"- {item['item']}: ¥{item['amount']:,}")
+        
+        total_amount = auto_result['total']
+        base_price = auto_result['base_fee']
+        facility_fee = auto_result['facility_fee']
+        
+    else:
+        base_price = st.number_input(
+            "基本保育料（円）",
+            value=res.get('base_price', 0) or 0,
+            step=500,
+            min_value=0
+        )
+        
+        facility_fee = 0
+        if service_category == "一時預かり保育":
+            include_facility = st.checkbox(
+                f"施設利用料を含める（¥{FACILITY_FEE}）",
+                value=bool(res.get('facility_fee'))
+            )
+            facility_fee = FACILITY_FEE if include_facility else 0
+        elif service_category == "ベビーシッター（施設型）":
+            facility_fee = FACILITY_FEE_SITTER
+            st.info(f"施設利用料: ¥{FACILITY_FEE_SITTER:,}")
+        
+        transport_fee = 0
+        if service_category == "ベビーシッター（自宅派遣型）":
+            transport_fee = st.number_input(
+                "交通費（円）",
+                value=res.get('transport_fee', 0) or 0,
+                step=100,
+                min_value=0
+            )
+        
+        extension_fee = res.get('extension_fee', 0) or 0
+        if extension_fee > 0:
+            st.warning(f"⏰ 延長料金: ¥{extension_fee:,}")
+        
+        with st.expander("🏷️ 割引・追加"):
+            discount_options = ["なし", "兄弟割引", "リピート割引", "その他"]
+            discount1 = st.selectbox("割引①", discount_options, index=0)
+            discount1_amount = 0
+            if discount1 != "なし":
+                discount1_amount = st.number_input("割引①金額", value=0, step=100, min_value=0, key="d1_amt")
+            
+            discount2 = st.selectbox("割引②", discount_options, index=0)
+            discount2_amount = 0
+            if discount2 != "なし":
+                discount2_amount = st.number_input("割引②金額", value=0, step=100, min_value=0, key="d2_amt")
+            
+            additional_fee = st.number_input("追加料金", value=res.get('additional_fee', 0) or 0, step=100, min_value=0)
+            additional_note = st.text_input("追加料金メモ", value=res.get('additional_note', '') or '')
+        
+        pricing = calculate_total_price(
+            service_category=service_category,
+            base_price=base_price,
+            facility_fee=facility_fee,
+            option_price=res.get('option_price', 0) or 0,
+            extension_fee=extension_fee,
+            transport_fee=transport_fee,
+            discount1_amount=discount1_amount,
+            discount2_amount=discount2_amount,
+            additional_fee=additional_fee,
+            is_cancelled=bool(is_cancelled),
+            include_facility_fee=(service_category == "一時預かり保育" and facility_fee > 0)
+        )
+        
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        
+        st.markdown("### 📊 料金内訳")
+        st.markdown(f"""
+        - 基本保育料: ¥{pricing['base_price']:,}
+        {"- 施設利用料: ¥" + f"{pricing['facility_fee']:,}" if pricing['facility_fee'] else ""}
+        {"- 交通費: ¥" + f"{pricing['transport_fee']:,}" if pricing['transport_fee'] else ""}
+        {"- 延長料金: ¥" + f"{pricing['extension_fee']:,}" if pricing['extension_fee'] else ""}
+        {"- 追加料金: ¥" + f"{pricing['additional_fee']:,}" if pricing['additional_fee'] else ""}
+        """)
+        
+        total_amount = pricing['total']
     
     if is_cancelled:
         st.warning("※ キャンセルのため50%のみ請求")
+        total_amount = int(base_price * CANCEL_FEE_RATE)
     
-    st.markdown(f"## 💴 合計: ¥{pricing['total']:,}")
+    st.markdown(f"## 💴 合計: ¥{total_amount:,}")
     
     cert_date = ''
     cert_type = ''
@@ -892,16 +1003,12 @@ def show_pricing_tab(res: dict):
     if st.button("💾 保存", type="primary", use_container_width=True):
         update_data = {
             'staff_name': selected_staff if selected_staff != "（選択してください）" else '',
-            'transport_fee': transport_fee,
-            'additional_fee': additional_fee,
-            'additional_note': additional_note,
-            'discount1': discount1 if discount1 != "なし" else '',
-            'discount1_amount': discount1_amount,
-            'discount2': discount2 if discount2 != "なし" else '',
-            'discount2_amount': discount2_amount,
+            'base_price': base_price,
+            'facility_fee': facility_fee,
+            'transport_fee': transport_fee if service_category == "ベビーシッター（自宅派遣型）" else 0,
             'certification_date': cert_date,
             'certification_type': cert_type,
-            'total_amount': pricing['total']
+            'total_amount': total_amount
         }
         update_attendance(res['id'], update_data)
         st.success("✅ 保存しました！")
