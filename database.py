@@ -10,6 +10,33 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def migrate_database():
+    """既存データベースに不足カラムを追加するマイグレーション"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    reservations_columns = {
+        'base_price': 'INTEGER DEFAULT 0',
+        'facility_fee': 'INTEGER DEFAULT 0',
+        'option_price': 'INTEGER DEFAULT 0',
+        'service_category': 'TEXT',
+        'welfare_service': 'INTEGER DEFAULT 0',
+    }
+    
+    cursor.execute("PRAGMA table_info(reservations)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    
+    for col_name, col_type in reservations_columns.items():
+        if col_name not in existing_cols:
+            try:
+                cursor.execute(f"ALTER TABLE reservations ADD COLUMN {col_name} {col_type}")
+            except:
+                pass
+    
+    conn.commit()
+    conn.close()
+
+
 def init_database():
     conn = get_connection()
     cursor = conn.cursor()
@@ -101,6 +128,8 @@ def init_database():
     
     conn.commit()
     conn.close()
+    
+    migrate_database()
 
 def determine_service_category(reservation_type: str) -> str:
     if "こぐまBaby" in reservation_type or "Baby" in reservation_type:
