@@ -253,6 +253,58 @@ def get_all_reservations() -> List[Dict]:
     
     return [dict(row) for row in rows]
 
+
+def get_reservations_by_month(year: int, month: int) -> List[Dict]:
+    """指定した年月の予約を取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    start_date = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year+1:04d}-01-01"
+    else:
+        end_date = f"{year:04d}-{month+1:02d}-01"
+    
+    cursor.execute('''
+        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+               a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+               a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+               a.discount2_amount, a.additional_fee, a.additional_note,
+               a.staff_name, a.certification_date, a.certification_type, a.total_amount
+        FROM reservations r
+        LEFT JOIN attendance_records a ON r.id = a.reservation_id
+        WHERE r.reservation_date >= ? AND r.reservation_date < ?
+        ORDER BY r.reservation_date, r.start_time
+    ''', (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
+
+
+def get_reservations_by_date_range(start_date: str, end_date: str) -> List[Dict]:
+    """指定した日付範囲の予約を取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+               a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+               a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+               a.discount2_amount, a.additional_fee, a.additional_note,
+               a.staff_name, a.certification_date, a.certification_type, a.total_amount
+        FROM reservations r
+        LEFT JOIN attendance_records a ON r.id = a.reservation_id
+        WHERE r.reservation_date >= ? AND r.reservation_date <= ?
+        ORDER BY r.reservation_date, r.start_time
+    ''', (start_date, end_date))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
+
 def update_attendance(reservation_id: int, data: Dict):
     conn = get_connection()
     cursor = conn.cursor()

@@ -6,7 +6,8 @@ import os
 from database import (
     init_database, import_csv_data, get_reservations_by_date,
     get_all_reservations, update_attendance, add_care_record,
-    get_care_records, get_staff_list, get_reservation_by_id
+    get_care_records, get_staff_list, get_reservation_by_id,
+    get_reservations_by_month, get_reservations_by_date_range
 )
 from pricing import (
     calculate_total_price, calculate_extension_fee, needs_certification,
@@ -418,10 +419,36 @@ def show_today_children():
 def show_reservations():
     st.markdown('<div class="main-header">📋 予約一覧</div>', unsafe_allow_html=True)
     
-    reservations = get_all_reservations()
+    today = date.today()
+    
+    st.markdown("**📅 期間選択**")
+    filter_type = st.radio(
+        "表示期間",
+        ["今月", "日付指定", "月指定"],
+        horizontal=True,
+        key="res_filter_type"
+    )
+    
+    if filter_type == "今月":
+        reservations = get_reservations_by_month(today.year, today.month)
+        st.info(f"📅 {today.year}年{today.month}月の予約を表示中")
+    elif filter_type == "日付指定":
+        selected_date = st.date_input("日付を選択", value=today, key="res_date")
+        reservations = get_reservations_by_date(selected_date.isoformat())
+        st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約を表示中")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="res_year")
+        with col2:
+            sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="res_month")
+        reservations = get_reservations_by_month(sel_year, sel_month)
+        st.info(f"📅 {sel_year}年{sel_month}月の予約を表示中")
+    
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     if not reservations:
-        st.info("📭 予約データがありません")
+        st.info("📭 該当する予約データがありません")
         return
     
     search_name = st.text_input("🔍 名前で検索", placeholder="お子様の名前")
@@ -442,7 +469,7 @@ def show_reservations():
     
     st.markdown(f"**{len(filtered)}件**")
     
-    for res in filtered[:30]:
+    for res in filtered[:50]:
         with st.container():
             col1, col2 = st.columns([3, 1])
             with col1:
@@ -466,15 +493,42 @@ def show_record_input():
     else:
         st.info("👇 児童を選択してください")
         
-        today_reservations = get_reservations_by_date(date.today().isoformat())
+        today = date.today()
         
-        if today_reservations:
-            st.markdown("### 📅 本日の予約")
-            for res in today_reservations:
-                if not res.get('is_cancelled'):
-                    show_child_card(res, show_quick_actions=True)
+        st.markdown("**📅 日付選択**")
+        filter_type = st.radio(
+            "表示期間",
+            ["今日", "日付指定", "月指定"],
+            horizontal=True,
+            key="rec_filter_type"
+        )
+        
+        if filter_type == "今日":
+            reservations = get_reservations_by_date(today.isoformat())
+            st.info(f"📅 {today.strftime('%Y年%m月%d日')}（今日）の予約")
+        elif filter_type == "日付指定":
+            selected_date = st.date_input("日付を選択", value=today, key="rec_date")
+            reservations = get_reservations_by_date(selected_date.isoformat())
+            st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約")
         else:
-            st.write("本日の予約はありません")
+            col1, col2 = st.columns(2)
+            with col1:
+                sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="rec_year")
+            with col2:
+                sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="rec_month")
+            reservations = get_reservations_by_month(sel_year, sel_month)
+            st.info(f"📅 {sel_year}年{sel_month}月の予約")
+        
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        
+        active_reservations = [r for r in reservations if not r.get('is_cancelled')]
+        
+        if active_reservations:
+            st.markdown(f"### 📋 予約一覧（{len(active_reservations)}件）")
+            for res in active_reservations:
+                show_child_card(res, show_quick_actions=True)
+        else:
+            st.write("該当する予約はありません")
 
 def show_detail_input(reservation_id: int):
     res = get_reservation_by_id(reservation_id)
@@ -1079,14 +1133,39 @@ def show_receipt_generation():
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    search_date = st.date_input("日付で絞り込み", value=None, key="receipt_date")
+    today = date.today()
     
-    reservations = get_all_reservations()
+    st.markdown("**📅 期間選択**")
+    filter_type = st.radio(
+        "表示期間",
+        ["今月", "日付指定", "月指定"],
+        horizontal=True,
+        key="rcpt_filter_type"
+    )
     
-    if search_date:
-        reservations = [r for r in reservations if r.get('reservation_date') == search_date.isoformat()]
+    if filter_type == "今月":
+        reservations = get_reservations_by_month(today.year, today.month)
+        st.info(f"📅 {today.year}年{today.month}月の予約を表示中")
+    elif filter_type == "日付指定":
+        selected_date = st.date_input("日付を選択", value=today, key="rcpt_date")
+        reservations = get_reservations_by_date(selected_date.isoformat())
+        st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約を表示中")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="rcpt_year")
+        with col2:
+            sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="rcpt_month")
+        reservations = get_reservations_by_month(sel_year, sel_month)
+        st.info(f"📅 {sel_year}年{sel_month}月の予約を表示中")
     
-    for res in reservations[:20]:
+    if not reservations:
+        st.info("📭 該当する予約がありません")
+        return
+    
+    st.markdown(f"**{len(reservations)}件**")
+    
+    for res in reservations[:50]:
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown(f"""
