@@ -651,32 +651,37 @@ def show_attendance_tab(res: dict):
 def show_care_tab(res: dict):
     st.markdown("### 🍚 ケア記録")
     
-    care_records = get_care_records(res['id'])
+    rid = res['id']
+    care_records = get_care_records(rid)
     
     amount_options = ["---", "完食", "ほぼ完食", "半分", "少し", "食べなかった"]
     stool_options = ["---", "普通", "軟便", "硬便", "下痢"]
+    
+    lunch_time_options = ["---"] + [f"{h:02d}:{m:02d}" for h in range(10, 15) for m in [0, 15, 30, 45] if not (h == 14 and m > 0)]
+    snack_time_options = ["---"] + [f"{h:02d}:{m:02d}" for h in range(13, 17) for m in [0, 15, 30, 45] if not (h == 16 and m > 0)]
+    nap_time_options = ["---"] + [f"{h:02d}:{m:02d}" for h in range(6, 23) for m in [0, 15, 30, 45] if not (h == 22 and m > 0)]
     
     st.markdown("**🌡️ 体温**")
     show_success_message("temp")
     col1, col2 = st.columns(2)
     with col1:
-        temp1_time = st.time_input("検温時刻①", value=None, key="temp1_time")
+        temp1_time = st.time_input("検温時刻①", value=None, key=f"temp1_time_{rid}")
     with col2:
-        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, key="temp1_val")
+        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, format="%.1f", key=f"temp1_val_{rid}")
     
     col1, col2 = st.columns(2)
     with col1:
-        temp2_time = st.time_input("検温時刻②", value=None, key="temp2_time")
+        temp2_time = st.time_input("検温時刻②", value=None, key=f"temp2_time_{rid}")
     with col2:
-        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, key="temp2_val")
+        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, format="%.1f", key=f"temp2_val_{rid}")
     
-    if st.button("🌡️ 体温を記録", key="save_temp", use_container_width=True):
+    if st.button("🌡️ 体温を記録", key=f"save_temp_{rid}", use_container_width=True):
         recorded = False
         if temp1_time:
-            add_care_record(res['id'], 'temperature', f"{temp1_time.strftime('%H:%M')} {temp1_val}℃", index=1)
+            add_care_record(rid, 'temperature', f"{temp1_time.strftime('%H:%M')} {temp1_val:.1f}℃", index=1)
             recorded = True
         if temp2_time:
-            add_care_record(res['id'], 'temperature', f"{temp2_time.strftime('%H:%M')} {temp2_val}℃", index=2)
+            add_care_record(rid, 'temperature', f"{temp2_time.strftime('%H:%M')} {temp2_val:.1f}℃", index=2)
             recorded = True
         if recorded:
             set_success_message("✅ 体温を記録しました", "temp")
@@ -688,12 +693,16 @@ def show_care_tab(res: dict):
     show_success_message("lunch")
     col1, col2 = st.columns(2)
     with col1:
-        lunch_time = st.time_input("昼食時刻", value=None, key="lunch_time")
+        lunch_time = st.selectbox("昼食時刻", lunch_time_options, key=f"lunch_time_{rid}")
     with col2:
-        lunch_amount = st.selectbox("昼食の量", amount_options, key="lunch_amount")
-    if st.button("🍚 昼食を記録", key="save_lunch", use_container_width=True):
-        if lunch_time and lunch_amount != "---":
-            add_care_record(res['id'], 'lunch', f"{lunch_time.strftime('%H:%M')} {lunch_amount}")
+        lunch_amount = st.selectbox("昼食の量", amount_options, key=f"lunch_amount_{rid}")
+    lunch_content = st.text_input("昼食内容（15文字程度）", max_chars=20, key=f"lunch_content_{rid}", placeholder="例：ご飯、味噌汁、煮物")
+    if st.button("🍚 昼食を記録", key=f"save_lunch_{rid}", use_container_width=True):
+        if lunch_time != "---" and lunch_amount != "---":
+            details = f"{lunch_time} {lunch_amount}"
+            if lunch_content:
+                details += f" {lunch_content}"
+            add_care_record(rid, 'lunch', details)
             set_success_message("✅ 昼食を記録しました", "lunch")
             st.rerun()
     
@@ -701,12 +710,16 @@ def show_care_tab(res: dict):
     show_success_message("snack")
     col1, col2 = st.columns(2)
     with col1:
-        snack_time = st.time_input("おやつ時刻", value=None, key="snack_time")
+        snack_time = st.selectbox("おやつ時刻", snack_time_options, key=f"snack_time_{rid}")
     with col2:
-        snack_amount = st.selectbox("おやつの量", amount_options, key="snack_amount")
-    if st.button("🍪 おやつを記録", key="save_snack", use_container_width=True):
-        if snack_time and snack_amount != "---":
-            add_care_record(res['id'], 'snack', f"{snack_time.strftime('%H:%M')} {snack_amount}")
+        snack_amount = st.selectbox("おやつの量", amount_options, key=f"snack_amount_{rid}")
+    snack_content = st.text_input("おやつ内容（15文字程度）", max_chars=20, key=f"snack_content_{rid}", placeholder="例：ビスケット、牛乳")
+    if st.button("🍪 おやつを記録", key=f"save_snack_{rid}", use_container_width=True):
+        if snack_time != "---" and snack_amount != "---":
+            details = f"{snack_time} {snack_amount}"
+            if snack_content:
+                details += f" {snack_content}"
+            add_care_record(rid, 'snack', details)
             set_success_message("✅ おやつを記録しました", "snack")
             st.rerun()
     
@@ -714,12 +727,12 @@ def show_care_tab(res: dict):
     show_success_message("dinner")
     col1, col2 = st.columns(2)
     with col1:
-        dinner_time = st.time_input("夕食時刻", value=None, key="dinner_time")
+        dinner_time = st.time_input("夕食時刻", value=None, key=f"dinner_time_{rid}")
     with col2:
-        dinner_amount = st.selectbox("夕食の量", amount_options, key="dinner_amount")
-    if st.button("🍽️ 夕食を記録", key="save_dinner", use_container_width=True):
+        dinner_amount = st.selectbox("夕食の量", amount_options, key=f"dinner_amount_{rid}")
+    if st.button("🍽️ 夕食を記録", key=f"save_dinner_{rid}", use_container_width=True):
         if dinner_time and dinner_amount != "---":
-            add_care_record(res['id'], 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
+            add_care_record(rid, 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
             set_success_message("✅ 夕食を記録しました", "dinner")
             st.rerun()
     
@@ -729,13 +742,13 @@ def show_care_tab(res: dict):
     show_success_message("milk")
     col1, col2 = st.columns(2)
     with col1:
-        milk_time = st.time_input("時刻", value=None, key="milk_time")
+        milk_time = st.time_input("時刻", value=None, key=f"milk_time_{rid}")
     with col2:
-        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=100, step=10, key="milk_amount")
+        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=100, step=10, key=f"milk_amount_{rid}")
     
-    if st.button("🍼 ミルクを記録", key="save_milk", use_container_width=True):
+    if st.button("🍼 ミルクを記録", key=f"save_milk_{rid}", use_container_width=True):
         if milk_time:
-            add_care_record(res['id'], 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
+            add_care_record(rid, 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
             set_success_message("✅ ミルクを記録しました", "milk")
             st.rerun()
     
@@ -746,52 +759,44 @@ def show_care_tab(res: dict):
     for i in range(1, 4):
         col1, col2 = st.columns(2)
         with col1:
-            stool_time = st.time_input(f"時刻{i}", value=None, key=f"stool_time_{i}")
+            stool_time = st.time_input(f"時刻{i}", value=None, key=f"stool_time_{rid}_{i}")
         with col2:
-            stool_type = st.selectbox(f"便の様子{i}", stool_options, key=f"stool_type_{i}")
+            stool_type = st.selectbox(f"便の様子{i}", stool_options, key=f"stool_type_{rid}_{i}")
         
-        if st.button(f"💩 排便{i}を記録", key=f"save_stool_{i}", use_container_width=True):
+        if st.button(f"💩 排便{i}を記録", key=f"save_stool_{rid}_{i}", use_container_width=True):
             if stool_time and stool_type != "---":
-                add_care_record(res['id'], 'stool', f"{stool_time.strftime('%H:%M')} {stool_type}", index=i)
+                add_care_record(rid, 'stool', f"{stool_time.strftime('%H:%M')} {stool_type}", index=i)
                 set_success_message(f"✅ 排便{i}を記録しました", "stool")
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    st.markdown("**😴 お昼寝**")
+    st.markdown("**😴 お昼寝（3回分）**")
     show_success_message("nap")
-    col1, col2 = st.columns(2)
-    with col1:
-        nap_start = st.time_input("開始", value=None, key="nap_start")
-    with col2:
-        nap_end = st.time_input("終了", value=None, key="nap_end")
-    
-    if st.button("😴 お昼寝を記録", key="save_nap", use_container_width=True):
-        if nap_start and nap_end:
-            add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜{nap_end.strftime('%H:%M')}")
-            set_success_message("✅ お昼寝を記録しました", "nap")
-        elif nap_start:
-            add_care_record(res['id'], 'nap', f"{nap_start.strftime('%H:%M')}〜")
-            set_success_message("✅ お昼寝を記録しました", "nap")
-        st.rerun()
-    
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    
-    st.markdown("**💧 おしっこ**")
-    show_success_message("diaper")
-    if st.button("💧 おしっこを記録", key="diaper_wet", use_container_width=True):
-        add_care_record(res['id'], 'diaper_wet', datetime.now().strftime('%H:%M'))
-        set_success_message("✅ おしっこを記録しました", "diaper")
-        st.rerun()
+    for i in range(1, 4):
+        col1, col2 = st.columns(2)
+        with col1:
+            nap_start = st.selectbox(f"開始{i}", nap_time_options, key=f"nap_start_{rid}_{i}")
+        with col2:
+            nap_end = st.selectbox(f"終了{i}", nap_time_options, key=f"nap_end_{rid}_{i}")
+        
+        if st.button(f"😴 お昼寝{i}を記録", key=f"save_nap_{rid}_{i}", use_container_width=True):
+            if nap_start != "---":
+                if nap_end != "---":
+                    add_care_record(rid, 'nap', f"{nap_start}〜{nap_end}", index=i)
+                else:
+                    add_care_record(rid, 'nap', f"{nap_start}〜", index=i)
+                set_success_message(f"✅ お昼寝{i}を記録しました", "nap")
+                st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     with st.expander("📝 その他・自由記述"):
         show_success_message("other")
-        other_note = st.text_area("内容", placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed")
-        if st.button("記録する", key="other", use_container_width=True):
+        other_note = st.text_area("内容", placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed", key=f"other_note_{rid}")
+        if st.button("記録する", key=f"other_{rid}", use_container_width=True):
             if other_note:
-                add_care_record(res['id'], 'other', other_note)
+                add_care_record(rid, 'other', other_note)
                 set_success_message("✅ 記録しました", "other")
                 st.rerun()
     

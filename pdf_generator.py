@@ -44,6 +44,13 @@ def generate_receipt_pdf(
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else "receipts", exist_ok=True)
     
     c = canvas.Canvas(output_path, pagesize=A4)
+    
+    c.setTitle("領収証 兼 要件証明書")
+    c.setAuthor(COMPANY_INFO['name'])
+    c.setSubject("ベビーシッター利用支援事業 領収証")
+    c.setCreator("こぐまハウス業務支援システム")
+    c.setProducer("ReportLab PDF Library")
+    
     width, height = A4
     
     y = height - 30*mm
@@ -71,8 +78,9 @@ def generate_receipt_pdf(
     c.drawString(20*mm, y, address)
     
     y -= 10*mm
+    guardian_name = reservation.get('guardian_name', '') or reservation.get('child_name', '')
     c.setFont(FONT_NAME, 14)
-    c.drawString(80*mm, y, "様")
+    c.drawString(20*mm, y, f"{guardian_name}　様")
     
     y -= 10*mm
     c.setFont(FONT_NAME, 10)
