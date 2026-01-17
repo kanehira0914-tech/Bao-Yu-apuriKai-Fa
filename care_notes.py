@@ -14,6 +14,9 @@ RECORD_TYPES = {
     "stool_2": "排便②",
     "stool_3": "排便③",
     "nap": "お昼寝",
+    "nap_1": "お昼寝①",
+    "nap_2": "お昼寝②",
+    "nap_3": "お昼寝③",
     "diaper_wet": "おしっこ",
     "other": "その他",
     "meal_start": "食事開始",
@@ -57,7 +60,7 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
             milks.append(details)
         elif record_type.startswith('stool'):
             stools.append(details)
-        elif record_type == 'nap':
+        elif record_type == 'nap' or record_type.startswith('nap_'):
             naps.append(details)
         elif record_type == 'diaper_wet':
             diapers.append(details or record_time)

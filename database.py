@@ -357,8 +357,9 @@ def add_care_record(reservation_id: int, record_type: str, details: str = "", in
     conn = get_connection()
     cursor = conn.cursor()
     
-    unique_types = ['lunch', 'snack', 'dinner', 'nap']
+    unique_types = ['lunch', 'snack', 'dinner']
     indexed_types = ['temperature', 'stool']
+    direct_indexed_types = ['nap_1', 'nap_2', 'nap_3']
     
     if record_type in unique_types:
         cursor.execute('''
@@ -397,6 +398,24 @@ def add_care_record(reservation_id: int, record_type: str, details: str = "", in
                 INSERT INTO care_records (reservation_id, record_type, record_time, details)
                 VALUES (?, ?, ?, ?)
             ''', (reservation_id, record_key, datetime.now().isoformat(), details))
+    elif record_type in direct_indexed_types:
+        cursor.execute('''
+            SELECT id FROM care_records
+            WHERE reservation_id = ? AND record_type = ?
+        ''', (reservation_id, record_type))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute('''
+                UPDATE care_records
+                SET details = ?, record_time = ?
+                WHERE id = ?
+            ''', (details, datetime.now().isoformat(), existing['id']))
+        else:
+            cursor.execute('''
+                INSERT INTO care_records (reservation_id, record_type, record_time, details)
+                VALUES (?, ?, ?, ?)
+            ''', (reservation_id, record_type, datetime.now().isoformat(), details))
     else:
         cursor.execute('''
             INSERT INTO care_records (reservation_id, record_type, record_time, details)
