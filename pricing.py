@@ -159,10 +159,10 @@ def calculate_auto_fee(
     housework_option: bool = False,
     transport_fee: int = 0
 ) -> Dict:
-    if use_date:
-        holiday = is_holiday(use_date)
-    elif is_holiday_manual is not None:
+    if is_holiday_manual is not None:
         holiday = is_holiday_manual
+    elif use_date:
+        holiday = is_holiday(use_date)
     else:
         holiday = False
     
@@ -287,8 +287,34 @@ def calculate_auto_fee(
             breakdown.append({"item": "交通費", "amount": transport_fee})
     
     else:
-        facility_fee = 0
+        rates = TEMPORARY_CARE_RATES[day_type]
+        segments = calculate_time_segments(start_minutes, end_minutes, "一時預かり保育")
+        
+        if segments["normal"] > 0:
+            normal_hours = segments["normal"] / 60
+            normal_fee = int(normal_hours * rates["normal"])
+            base_fee += normal_fee
+            breakdown.append({
+                "item": f"通常時間（9:00-17:00）{segments['normal']}分",
+                "amount": normal_fee
+            })
+        
+        if segments["overtime"] > 0:
+            overtime_hours = segments["overtime"] / 60
+            overtime_fee = int(overtime_hours * rates["overtime"])
+            base_fee += overtime_fee
+            breakdown.append({
+                "item": f"時間外（7:00-9:00/17:00-22:00）{segments['overtime']}分",
+                "amount": overtime_fee
+            })
+        
+        facility_fee = FACILITY_FEE
+        breakdown.append({"item": "施設利用料", "amount": facility_fee})
+        
         sibling_discount = 0
+        if has_sibling:
+            sibling_discount = int(total_hours * SIBLING_DISCOUNT_TEMPORARY)
+            breakdown.append({"item": f"兄弟割引（{total_hours:.1f}時間×△400円）", "amount": -sibling_discount})
     
     meal_total = 0
     if snack:
@@ -302,7 +328,7 @@ def calculate_auto_fee(
         breakdown.append({"item": "夕食", "amount": dinner_price})
     
     total = base_fee + facility_fee + meal_total
-    if service_type == "一時預かり保育" and has_sibling:
+    if service_type not in ["ベビーシッター（施設型）", "ベビーシッター（自宅派遣型）"] and has_sibling:
         total -= sibling_discount
     if service_type == "ベビーシッター（自宅派遣型）":
         if housework_option:
