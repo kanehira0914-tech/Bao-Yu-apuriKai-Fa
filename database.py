@@ -126,6 +126,22 @@ def init_database():
             default_staff
         )
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS nap_check_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reservation_id INTEGER,
+            nap_index INTEGER DEFAULT 1,
+            check_time TEXT,
+            arrow_direction TEXT DEFAULT 'up',
+            is_corrected INTEGER DEFAULT 0,
+            staff_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (reservation_id) REFERENCES reservations(id),
+            UNIQUE(reservation_id, nap_index, check_time)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
     
@@ -469,5 +485,69 @@ def get_reservation_by_id(reservation_id: int) -> Optional[Dict]:
     conn.close()
     
     return dict(row) if row else None
+
+
+def save_nap_check_log(reservation_id: int, nap_index: int, check_time: str, 
+                        arrow_direction: str, is_corrected: bool, staff_name: str):
+    """午睡チェックログを保存（upsert）"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id FROM nap_check_logs
+        WHERE reservation_id = ? AND nap_index = ? AND check_time = ?
+    ''', (reservation_id, nap_index, check_time))
+    
+    existing = cursor.fetchone()
+    
+    if existing:
+        cursor.execute('''
+            UPDATE nap_check_logs
+            SET arrow_direction = ?, is_corrected = ?, staff_name = ?, updated_at = ?
+            WHERE id = ?
+        ''', (arrow_direction, 1 if is_corrected else 0, staff_name, 
+              datetime.now().isoformat(), existing['id']))
+    else:
+        cursor.execute('''
+            INSERT INTO nap_check_logs 
+            (reservation_id, nap_index, check_time, arrow_direction, is_corrected, staff_name)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (reservation_id, nap_index, check_time, arrow_direction, 
+              1 if is_corrected else 0, staff_name))
+    
+    conn.commit()
+    conn.close()
+
+
+def get_nap_check_logs(reservation_id: int, nap_index: int) -> List[Dict]:
+    """特定の午睡セッションのチェックログを取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT * FROM nap_check_logs
+        WHERE reservation_id = ? AND nap_index = ?
+        ORDER BY check_time
+    ''', (reservation_id, nap_index))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
+
+
+def delete_nap_check_logs(reservation_id: int, nap_index: int):
+    """特定の午睡セッションのチェックログを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        DELETE FROM nap_check_logs
+        WHERE reservation_id = ? AND nap_index = ?
+    ''', (reservation_id, nap_index))
+    
+    conn.commit()
+    conn.close()
+
 
 init_database()
