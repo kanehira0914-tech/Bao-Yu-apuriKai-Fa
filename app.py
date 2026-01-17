@@ -198,16 +198,15 @@ if 'renrakucho_temp_save' not in st.session_state:
 
 def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
     """DBからケア記録を読み込んでsession_stateにセット"""
-    if reservation_id in st.session_state.care_data_loaded and not force_reload:
+    rid = reservation_id
+    db_key = f"care_db_{rid}"
+    
+    if db_key in st.session_state and not force_reload:
         return
     
     records = get_care_records(reservation_id)
-    rid = reservation_id
     
-    keys_to_clear = [k for k in list(st.session_state.keys()) if f"_{rid}" in k]
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
+    care_data = {}
     
     for record in records:
         record_type = record.get('record_type', '')
@@ -220,9 +219,9 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        st.session_state[f"temp1_time_{rid}"] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                        care_data['temp1_time'] = dt_time(int(time_parts[0]), int(time_parts[1]))
                     temp_str = parts[1].replace('℃', '').strip()
-                    st.session_state[f"temp1_val_{rid}"] = float(temp_str)
+                    care_data['temp1_val'] = float(temp_str)
                 except:
                     pass
         
@@ -233,27 +232,27 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        st.session_state[f"temp2_time_{rid}"] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                        care_data['temp2_time'] = dt_time(int(time_parts[0]), int(time_parts[1]))
                     temp_str = parts[1].replace('℃', '').strip()
-                    st.session_state[f"temp2_val_{rid}"] = float(temp_str)
+                    care_data['temp2_val'] = float(temp_str)
                 except:
                     pass
         
         elif record_type == 'lunch' and details:
             parts = details.split(' ', 2)
             if len(parts) >= 2:
-                st.session_state[f"lunch_time_{rid}"] = parts[0]
-                st.session_state[f"lunch_amount_{rid}"] = parts[1]
+                care_data['lunch_time'] = parts[0]
+                care_data['lunch_amount'] = parts[1]
                 if len(parts) >= 3:
-                    st.session_state[f"lunch_content_{rid}"] = parts[2]
+                    care_data['lunch_content'] = parts[2]
         
         elif record_type == 'snack' and details:
             parts = details.split(' ', 2)
             if len(parts) >= 2:
-                st.session_state[f"snack_time_{rid}"] = parts[0]
-                st.session_state[f"snack_amount_{rid}"] = parts[1]
+                care_data['snack_time'] = parts[0]
+                care_data['snack_amount'] = parts[1]
                 if len(parts) >= 3:
-                    st.session_state[f"snack_content_{rid}"] = parts[2]
+                    care_data['snack_content'] = parts[2]
         
         elif record_type == 'dinner' and details:
             parts = details.split(' ', 1)
@@ -262,8 +261,8 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        st.session_state[f"dinner_time_{rid}"] = dt_time(int(time_parts[0]), int(time_parts[1]))
-                    st.session_state[f"dinner_amount_{rid}"] = parts[1]
+                        care_data['dinner_time'] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                    care_data['dinner_amount'] = parts[1]
                 except:
                     pass
         
@@ -274,9 +273,9 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        st.session_state[f"milk_time_{rid}"] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                        care_data['milk_time'] = dt_time(int(time_parts[0]), int(time_parts[1]))
                     ml_str = parts[1].replace('ml', '').strip()
-                    st.session_state[f"milk_amount_{rid}"] = int(ml_str)
+                    care_data['milk_amount'] = int(ml_str)
                 except:
                     pass
         
@@ -288,8 +287,8 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        st.session_state[f"stool_time_{rid}_{idx}"] = dt_time(int(time_parts[0]), int(time_parts[1]))
-                    st.session_state[f"stool_type_{rid}_{idx}"] = parts[1]
+                        care_data[f'stool_time_{idx}'] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                    care_data[f'stool_type_{idx}'] = parts[1]
             except:
                 pass
         
@@ -301,16 +300,16 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     idx = int(record_type.split('_')[1])
                 if '〜' in details:
                     nap_parts = details.split('〜')
-                    st.session_state[f"nap_start_{rid}_{idx}"] = nap_parts[0]
+                    care_data[f'nap_start_{idx}'] = nap_parts[0]
                     if len(nap_parts) > 1 and nap_parts[1]:
-                        st.session_state[f"nap_end_{rid}_{idx}"] = nap_parts[1]
+                        care_data[f'nap_end_{idx}'] = nap_parts[1]
             except:
                 pass
         
         elif record_type == 'other' and details:
-            st.session_state[f"other_note_{rid}"] = details
+            care_data['other_note'] = details
     
-    st.session_state.care_data_loaded[reservation_id] = True
+    st.session_state[db_key] = care_data
 
 def navigate_to(page_name: str):
     st.session_state.current_page = page_name
@@ -658,7 +657,7 @@ def show_detail_input(reservation_id: int):
         st.session_state.selected_reservation_id = None
         return
     
-    load_care_data_to_session(reservation_id, force_reload=False)
+    load_care_data_to_session(reservation_id, force_reload=True)
     
     if st.button("← 戻る", use_container_width=True):
         st.session_state.selected_reservation_id = None
@@ -774,12 +773,12 @@ def show_care_tab(res: dict):
     st.markdown("### 🍚 ケア記録")
     
     rid = res['id']
+    db_key = f"care_db_{rid}"
+    care_data = st.session_state.get(db_key, {})
     
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("🔄 再読込", key=f"refresh_care_{rid}", use_container_width=True):
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
             load_care_data_to_session(rid, force_reload=True)
             st.rerun()
     
@@ -795,10 +794,10 @@ def show_care_tab(res: dict):
     st.markdown("**🌡️ 体温**")
     show_success_message("temp")
     
-    temp1_time_default = st.session_state.get(f"temp1_time_{rid}", None)
-    temp1_val_default = st.session_state.get(f"temp1_val_{rid}", 36.5)
-    temp2_time_default = st.session_state.get(f"temp2_time_{rid}", None)
-    temp2_val_default = st.session_state.get(f"temp2_val_{rid}", 36.5)
+    temp1_time_default = care_data.get('temp1_time', None)
+    temp1_val_default = care_data.get('temp1_val', 36.5)
+    temp2_time_default = care_data.get('temp2_time', None)
+    temp2_val_default = care_data.get('temp2_val', 36.5)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -822,20 +821,25 @@ def show_care_tab(res: dict):
             recorded = True
         if recorded:
             set_success_message("✅ 体温を記録しました", "temp")
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
+            if db_key in st.session_state:
+                del st.session_state[db_key]
         st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     st.markdown("**🍽️ 昼食**")
     show_success_message("lunch")
+    lunch_time_default = care_data.get('lunch_time', "---")
+    lunch_amount_default = care_data.get('lunch_amount', "---")
+    lunch_content_default = care_data.get('lunch_content', "")
+    lunch_time_idx = lunch_time_options.index(lunch_time_default) if lunch_time_default in lunch_time_options else 0
+    lunch_amount_idx = amount_options.index(lunch_amount_default) if lunch_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
-        lunch_time = st.selectbox("昼食時刻", lunch_time_options, key=f"lunch_time_{rid}")
+        lunch_time = st.selectbox("昼食時刻", lunch_time_options, index=lunch_time_idx, key=f"lunch_time_{rid}")
     with col2:
-        lunch_amount = st.selectbox("昼食の量", amount_options, key=f"lunch_amount_{rid}")
-    lunch_content = st.text_input("昼食内容（15文字程度）", max_chars=20, key=f"lunch_content_{rid}", placeholder="例：ご飯、味噌汁、煮物")
+        lunch_amount = st.selectbox("昼食の量", amount_options, index=lunch_amount_idx, key=f"lunch_amount_{rid}")
+    lunch_content = st.text_input("昼食内容（15文字程度）", value=lunch_content_default, max_chars=20, key=f"lunch_content_{rid}", placeholder="例：ご飯、味噌汁、煮物")
     if st.button("🍚 昼食を記録", key=f"save_lunch_{rid}", use_container_width=True):
         if lunch_time != "---" and lunch_amount != "---":
             details = f"{lunch_time} {lunch_amount}"
@@ -843,18 +847,23 @@ def show_care_tab(res: dict):
                 details += f" {lunch_content}"
             add_care_record(rid, 'lunch', details)
             set_success_message("✅ 昼食を記録しました", "lunch")
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
+            if db_key in st.session_state:
+                del st.session_state[db_key]
             st.rerun()
     
     st.markdown("**🍪 おやつ**")
     show_success_message("snack")
+    snack_time_default = care_data.get('snack_time', "---")
+    snack_amount_default = care_data.get('snack_amount', "---")
+    snack_content_default = care_data.get('snack_content', "")
+    snack_time_idx = snack_time_options.index(snack_time_default) if snack_time_default in snack_time_options else 0
+    snack_amount_idx = amount_options.index(snack_amount_default) if snack_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
-        snack_time = st.selectbox("おやつ時刻", snack_time_options, key=f"snack_time_{rid}")
+        snack_time = st.selectbox("おやつ時刻", snack_time_options, index=snack_time_idx, key=f"snack_time_{rid}")
     with col2:
-        snack_amount = st.selectbox("おやつの量", amount_options, key=f"snack_amount_{rid}")
-    snack_content = st.text_input("おやつ内容（15文字程度）", max_chars=20, key=f"snack_content_{rid}", placeholder="例：ビスケット、牛乳")
+        snack_amount = st.selectbox("おやつの量", amount_options, index=snack_amount_idx, key=f"snack_amount_{rid}")
+    snack_content = st.text_input("おやつ内容（15文字程度）", value=snack_content_default, max_chars=20, key=f"snack_content_{rid}", placeholder="例：ビスケット、牛乳")
     if st.button("🍪 おやつを記録", key=f"save_snack_{rid}", use_container_width=True):
         if snack_time != "---" and snack_amount != "---":
             details = f"{snack_time} {snack_amount}"
@@ -862,32 +871,34 @@ def show_care_tab(res: dict):
                 details += f" {snack_content}"
             add_care_record(rid, 'snack', details)
             set_success_message("✅ おやつを記録しました", "snack")
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
+            if db_key in st.session_state:
+                del st.session_state[db_key]
             st.rerun()
     
     st.markdown("**🍽️ 夕食**")
     show_success_message("dinner")
-    dinner_time_default = st.session_state.get(f"dinner_time_{rid}", None)
+    dinner_time_default = care_data.get('dinner_time', None)
+    dinner_amount_default = care_data.get('dinner_amount', "---")
+    dinner_amount_idx = amount_options.index(dinner_amount_default) if dinner_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
         dinner_time = st.time_input("夕食時刻", value=dinner_time_default, key=f"dinner_time_{rid}")
     with col2:
-        dinner_amount = st.selectbox("夕食の量", amount_options, key=f"dinner_amount_{rid}")
+        dinner_amount = st.selectbox("夕食の量", amount_options, index=dinner_amount_idx, key=f"dinner_amount_{rid}")
     if st.button("🍽️ 夕食を記録", key=f"save_dinner_{rid}", use_container_width=True):
         if dinner_time and dinner_amount != "---":
             add_care_record(rid, 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
             set_success_message("✅ 夕食を記録しました", "dinner")
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
+            if db_key in st.session_state:
+                del st.session_state[db_key]
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     st.markdown("**🍼 ミルク**")
     show_success_message("milk")
-    milk_time_default = st.session_state.get(f"milk_time_{rid}", None)
-    milk_amount_default = st.session_state.get(f"milk_amount_{rid}", 100)
+    milk_time_default = care_data.get('milk_time', None)
+    milk_amount_default = care_data.get('milk_amount', 100)
     col1, col2 = st.columns(2)
     with col1:
         milk_time = st.time_input("時刻", value=milk_time_default, key=f"milk_time_{rid}")
@@ -898,8 +909,8 @@ def show_care_tab(res: dict):
         if milk_time:
             add_care_record(rid, 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
             set_success_message("✅ ミルクを記録しました", "milk")
-            if rid in st.session_state.care_data_loaded:
-                del st.session_state.care_data_loaded[rid]
+            if db_key in st.session_state:
+                del st.session_state[db_key]
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -907,19 +918,21 @@ def show_care_tab(res: dict):
     st.markdown("**💩 排便（3回分）**")
     show_success_message("stool")
     for i in range(1, 4):
-        stool_time_default = st.session_state.get(f"stool_time_{rid}_{i}", None)
+        stool_time_default = care_data.get(f'stool_time_{i}', None)
+        stool_type_default = care_data.get(f'stool_type_{i}', "---")
+        stool_type_idx = stool_options.index(stool_type_default) if stool_type_default in stool_options else 0
         col1, col2 = st.columns(2)
         with col1:
             stool_time = st.time_input(f"時刻{i}", value=stool_time_default, key=f"stool_time_{rid}_{i}")
         with col2:
-            stool_type = st.selectbox(f"便の様子{i}", stool_options, key=f"stool_type_{rid}_{i}")
+            stool_type = st.selectbox(f"便の様子{i}", stool_options, index=stool_type_idx, key=f"stool_type_{rid}_{i}")
         
         if st.button(f"💩 排便{i}を記録", key=f"save_stool_{rid}_{i}", use_container_width=True):
             if stool_time and stool_type != "---":
                 add_care_record(rid, 'stool', f"{stool_time.strftime('%H:%M')} {stool_type}", index=i)
                 set_success_message(f"✅ 排便{i}を記録しました", "stool")
-                if rid in st.session_state.care_data_loaded:
-                    del st.session_state.care_data_loaded[rid]
+                if db_key in st.session_state:
+                    del st.session_state[db_key]
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -927,11 +940,15 @@ def show_care_tab(res: dict):
     st.markdown("**😴 お昼寝（3回分）**")
     show_success_message("nap")
     for i in range(1, 4):
+        nap_start_default = care_data.get(f'nap_start_{i}', "---")
+        nap_end_default = care_data.get(f'nap_end_{i}', "---")
+        nap_start_idx = nap_time_options.index(nap_start_default) if nap_start_default in nap_time_options else 0
+        nap_end_idx = nap_time_options.index(nap_end_default) if nap_end_default in nap_time_options else 0
         col1, col2 = st.columns(2)
         with col1:
-            nap_start = st.selectbox(f"開始{i}", nap_time_options, key=f"nap_start_{rid}_{i}")
+            nap_start = st.selectbox(f"開始{i}", nap_time_options, index=nap_start_idx, key=f"nap_start_{rid}_{i}")
         with col2:
-            nap_end = st.selectbox(f"終了{i}", nap_time_options, key=f"nap_end_{rid}_{i}")
+            nap_end = st.selectbox(f"終了{i}", nap_time_options, index=nap_end_idx, key=f"nap_end_{rid}_{i}")
         
         if st.button(f"😴 お昼寝{i}を記録", key=f"save_nap_{rid}_{i}", use_container_width=True):
             if nap_start != "---":
@@ -940,21 +957,22 @@ def show_care_tab(res: dict):
                 else:
                     add_care_record(rid, f'nap_{i}', f"{nap_start}〜")
                 set_success_message(f"✅ お昼寝{i}を記録しました", "nap")
-                if rid in st.session_state.care_data_loaded:
-                    del st.session_state.care_data_loaded[rid]
+                if db_key in st.session_state:
+                    del st.session_state[db_key]
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     with st.expander("📝 その他・自由記述"):
         show_success_message("other")
-        other_note = st.text_area("内容", placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed", key=f"other_note_{rid}")
+        other_note_default = care_data.get('other_note', "")
+        other_note = st.text_area("内容", value=other_note_default, placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed", key=f"other_note_{rid}")
         if st.button("記録する", key=f"other_{rid}", use_container_width=True):
             if other_note:
                 add_care_record(rid, 'other', other_note)
                 set_success_message("✅ 記録しました", "other")
-                if rid in st.session_state.care_data_loaded:
-                    del st.session_state.care_data_loaded[rid]
+                if db_key in st.session_state:
+                    del st.session_state[db_key]
                 st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
