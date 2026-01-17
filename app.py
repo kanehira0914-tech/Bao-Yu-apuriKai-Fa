@@ -794,17 +794,23 @@ def show_care_tab(res: dict):
     
     st.markdown("**🌡️ 体温**")
     show_success_message("temp")
-    col1, col2 = st.columns(2)
-    with col1:
-        temp1_time = st.time_input("検温時刻①", value=None, key=f"temp1_time_{rid}")
-    with col2:
-        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, format="%.1f", key=f"temp1_val_{rid}")
+    
+    temp1_time_default = st.session_state.get(f"temp1_time_{rid}", None)
+    temp1_val_default = st.session_state.get(f"temp1_val_{rid}", 36.5)
+    temp2_time_default = st.session_state.get(f"temp2_time_{rid}", None)
+    temp2_val_default = st.session_state.get(f"temp2_val_{rid}", 36.5)
     
     col1, col2 = st.columns(2)
     with col1:
-        temp2_time = st.time_input("検温時刻②", value=None, key=f"temp2_time_{rid}")
+        temp1_time = st.time_input("検温時刻①", value=temp1_time_default, key=f"temp1_time_{rid}")
     with col2:
-        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=36.5, step=0.1, format="%.1f", key=f"temp2_val_{rid}")
+        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=temp1_val_default, step=0.1, format="%.1f", key=f"temp1_val_{rid}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        temp2_time = st.time_input("検温時刻②", value=temp2_time_default, key=f"temp2_time_{rid}")
+    with col2:
+        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=temp2_val_default, step=0.1, format="%.1f", key=f"temp2_val_{rid}")
     
     if st.button("🌡️ 体温を記録", key=f"save_temp_{rid}", use_container_width=True):
         recorded = False
@@ -862,9 +868,10 @@ def show_care_tab(res: dict):
     
     st.markdown("**🍽️ 夕食**")
     show_success_message("dinner")
+    dinner_time_default = st.session_state.get(f"dinner_time_{rid}", None)
     col1, col2 = st.columns(2)
     with col1:
-        dinner_time = st.time_input("夕食時刻", value=None, key=f"dinner_time_{rid}")
+        dinner_time = st.time_input("夕食時刻", value=dinner_time_default, key=f"dinner_time_{rid}")
     with col2:
         dinner_amount = st.selectbox("夕食の量", amount_options, key=f"dinner_amount_{rid}")
     if st.button("🍽️ 夕食を記録", key=f"save_dinner_{rid}", use_container_width=True):
@@ -879,11 +886,13 @@ def show_care_tab(res: dict):
     
     st.markdown("**🍼 ミルク**")
     show_success_message("milk")
+    milk_time_default = st.session_state.get(f"milk_time_{rid}", None)
+    milk_amount_default = st.session_state.get(f"milk_amount_{rid}", 100)
     col1, col2 = st.columns(2)
     with col1:
-        milk_time = st.time_input("時刻", value=None, key=f"milk_time_{rid}")
+        milk_time = st.time_input("時刻", value=milk_time_default, key=f"milk_time_{rid}")
     with col2:
-        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=100, step=10, key=f"milk_amount_{rid}")
+        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=milk_amount_default, step=10, key=f"milk_amount_{rid}")
     
     if st.button("🍼 ミルクを記録", key=f"save_milk_{rid}", use_container_width=True):
         if milk_time:
@@ -898,9 +907,10 @@ def show_care_tab(res: dict):
     st.markdown("**💩 排便（3回分）**")
     show_success_message("stool")
     for i in range(1, 4):
+        stool_time_default = st.session_state.get(f"stool_time_{rid}_{i}", None)
         col1, col2 = st.columns(2)
         with col1:
-            stool_time = st.time_input(f"時刻{i}", value=None, key=f"stool_time_{rid}_{i}")
+            stool_time = st.time_input(f"時刻{i}", value=stool_time_default, key=f"stool_time_{rid}_{i}")
         with col2:
             stool_type = st.selectbox(f"便の様子{i}", stool_options, key=f"stool_type_{rid}_{i}")
         
