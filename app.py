@@ -9,8 +9,14 @@ from database import (
     get_care_records, get_staff_list, get_reservation_by_id,
     get_reservations_by_month, get_reservations_by_date_range,
     save_nap_check_log, get_nap_check_logs, delete_nap_check_logs,
-    add_staff, update_staff, delete_staff, get_staff_by_id
+    add_staff, update_staff, delete_staff, get_staff_by_id,
+    FACILITY_HOUSE, FACILITY_BABY, DEFAULT_FACILITY
 )
+
+FACILITY_OPTIONS = {
+    FACILITY_HOUSE: "🏠 こぐまハウス",
+    FACILITY_BABY: "👶 こぐまbaby"
+}
 from pricing import (
     calculate_total_price, calculate_extension_fee, needs_certification,
     calculate_auto_fee, is_holiday, get_rate_table,
@@ -38,6 +44,16 @@ if 'success_message' not in st.session_state:
     st.session_state.success_message = None
 if 'success_message_key' not in st.session_state:
     st.session_state.success_message_key = None
+if 'current_facility' not in st.session_state:
+    st.session_state.current_facility = DEFAULT_FACILITY
+
+
+def get_current_facility() -> str:
+    return st.session_state.get('current_facility', DEFAULT_FACILITY)
+
+
+def get_facility_display_name(facility_id: str) -> str:
+    return FACILITY_OPTIONS.get(facility_id, facility_id)
 
 def show_success_message(key: str = None):
     if st.session_state.success_message and (key is None or st.session_state.success_message_key == key):
@@ -432,7 +448,8 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     existing_logs = get_nap_check_logs(rid, nap_index)
     logs_dict = {log['check_time']: log for log in existing_logs}
     
-    staff_list = get_staff_list()
+    facility = get_current_facility()
+    staff_list = get_staff_list(facility)
     staff_names = ["---"] + [s['name'] for s in staff_list]
     
     nap_state_key = f"nap_check_state_{rid}_{nap_index}"
@@ -564,8 +581,33 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
 def navigate_to(page_name: str):
     st.session_state.current_page = page_name
 
+def show_facility_selector():
+    """ヘッダーに施設切替セレクターを表示"""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        facility_options = list(FACILITY_OPTIONS.keys())
+        facility_labels = list(FACILITY_OPTIONS.values())
+        current_idx = facility_options.index(get_current_facility()) if get_current_facility() in facility_options else 0
+        
+        selected_label = st.selectbox(
+            "施設選択",
+            facility_labels,
+            index=current_idx,
+            key="facility_selector",
+            label_visibility="collapsed"
+        )
+        
+        selected_facility = facility_options[facility_labels.index(selected_label)]
+        if selected_facility != st.session_state.current_facility:
+            st.session_state.current_facility = selected_facility
+            st.rerun()
+
+
 def main():
-    st.sidebar.markdown("## 🐻 こぐまハウス")
+    show_facility_selector()
+    
+    facility_name = get_facility_display_name(get_current_facility())
+    st.sidebar.markdown(f"## {facility_name}")
     st.sidebar.markdown("---")
     
     if st.sidebar.button("🏠 ホーム", use_container_width=True):
@@ -617,11 +659,13 @@ def main():
         show_home()
 
 def show_home():
-    st.markdown('<div class="main-header">🐻 こぐまハウス</div>', unsafe_allow_html=True)
+    facility = get_current_facility()
+    facility_name = get_facility_display_name(facility)
+    st.markdown(f'<div class="main-header">{facility_name}</div>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:#8B7355;margin-bottom:1rem;">業務支援システム</p>', unsafe_allow_html=True)
     
     today = date.today().isoformat()
-    today_reservations = get_reservations_by_date(today)
+    today_reservations = get_reservations_by_date(today, facility)
     
     col1, col2 = st.columns(2)
     with col1:
@@ -755,16 +799,21 @@ def show_data_import():
             with st.expander("📊 プレビュー"):
                 st.dataframe(df.head(5), use_container_width=True)
             
+            facility = get_current_facility()
+            facility_name = get_facility_display_name(facility)
+            st.info(f"📌 取込先施設: **{facility_name}**")
+            
             if st.button("📥 データベースに取り込む", type="primary", use_container_width=True):
                 with st.spinner("取込中..."):
-                    count = import_csv_data(df)
-                    st.success(f"✅ {count}件を取り込みました！")
+                    count = import_csv_data(df, facility)
+                    st.success(f"✅ {count}件を「{facility_name}」に取り込みました！")
                     st.balloons()
         
         except Exception as e:
             st.error(f"エラー: {str(e)}")
 
 def show_today_children():
+    facility = get_current_facility()
     st.markdown('<div class="main-header">👶 本日の児童</div>', unsafe_allow_html=True)
     
     selected_date = st.date_input(
@@ -773,7 +822,7 @@ def show_today_children():
         label_visibility="collapsed"
     )
     
-    reservations = get_reservations_by_date(selected_date.isoformat())
+    reservations = get_reservations_by_date(selected_date.isoformat(), facility)
     
     if not reservations:
         st.info("📭 予約がありません")
@@ -793,6 +842,7 @@ def show_today_children():
                 show_child_card(res)
 
 def show_reservations():
+    facility = get_current_facility()
     st.markdown('<div class="main-header">📋 予約一覧</div>', unsafe_allow_html=True)
     
     if st.session_state.selected_reservation_id:
@@ -810,11 +860,11 @@ def show_reservations():
     )
     
     if filter_type == "今月":
-        reservations = get_reservations_by_month(today.year, today.month)
+        reservations = get_reservations_by_month(today.year, today.month, facility)
         st.info(f"📅 {today.year}年{today.month}月の予約を表示中")
     elif filter_type == "日付指定":
         selected_date = st.date_input("日付を選択", value=today, key="res_date")
-        reservations = get_reservations_by_date(selected_date.isoformat())
+        reservations = get_reservations_by_date(selected_date.isoformat(), facility)
         st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約を表示中")
     else:
         col1, col2 = st.columns(2)
@@ -822,7 +872,7 @@ def show_reservations():
             sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="res_year")
         with col2:
             sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="res_month")
-        reservations = get_reservations_by_month(sel_year, sel_month)
+        reservations = get_reservations_by_month(sel_year, sel_month, facility)
         st.info(f"📅 {sel_year}年{sel_month}月の予約を表示中")
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -883,12 +933,14 @@ def show_record_input():
             key="rec_filter_type"
         )
         
+        facility = get_current_facility()
+        
         if filter_type == "今日":
-            reservations = get_reservations_by_date(today.isoformat())
+            reservations = get_reservations_by_date(today.isoformat(), facility)
             st.info(f"📅 {today.strftime('%Y年%m月%d日')}（今日）の予約")
         elif filter_type == "日付指定":
             selected_date = st.date_input("日付を選択", value=today, key="rec_date")
-            reservations = get_reservations_by_date(selected_date.isoformat())
+            reservations = get_reservations_by_date(selected_date.isoformat(), facility)
             st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約")
         else:
             col1, col2 = st.columns(2)
@@ -896,7 +948,7 @@ def show_record_input():
                 sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="rec_year")
             with col2:
                 sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="rec_month")
-            reservations = get_reservations_by_month(sel_year, sel_month)
+            reservations = get_reservations_by_month(sel_year, sel_month, facility)
             st.info(f"📅 {sel_year}年{sel_month}月の予約")
         
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -1335,7 +1387,8 @@ def show_pricing_tab(res: dict):
         key="calc_mode"
     )
     
-    staff_list = get_staff_list()
+    facility = get_current_facility()
+    staff_list = get_staff_list(facility)
     staff_names = ["（選択してください）"] + [s['name'] for s in staff_list]
     
     current_staff = res.get('staff_name', '')
@@ -1692,12 +1745,14 @@ def show_receipt_generation():
         key="rcpt_filter_type"
     )
     
+    facility = get_current_facility()
+    
     if filter_type == "今月":
-        reservations = get_reservations_by_month(today.year, today.month)
+        reservations = get_reservations_by_month(today.year, today.month, facility)
         st.info(f"📅 {today.year}年{today.month}月の予約を表示中")
     elif filter_type == "日付指定":
         selected_date = st.date_input("日付を選択", value=today, key="rcpt_date")
-        reservations = get_reservations_by_date(selected_date.isoformat())
+        reservations = get_reservations_by_date(selected_date.isoformat(), facility)
         st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約を表示中")
     else:
         col1, col2 = st.columns(2)
@@ -1705,7 +1760,7 @@ def show_receipt_generation():
             sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="rcpt_year")
         with col2:
             sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="rcpt_month")
-        reservations = get_reservations_by_month(sel_year, sel_month)
+        reservations = get_reservations_by_month(sel_year, sel_month, facility)
         st.info(f"📅 {sel_year}年{sel_month}月の予約を表示中")
     
     if not reservations:
@@ -1993,6 +2048,9 @@ def show_settings():
             st.session_state.show_add_form = True
             st.session_state.editing_staff_id = None
     
+    facility_options_staff = ["both", FACILITY_HOUSE, FACILITY_BABY]
+    facility_labels_staff = ["両方の施設", "🏠 こぐまハウスのみ", "👶 こぐまbabyのみ"]
+    
     if st.session_state.show_add_form:
         st.markdown("#### 新規スタッフ登録")
         with st.form("add_staff_form"):
@@ -2000,6 +2058,8 @@ def show_settings():
             new_kana = st.text_input("氏名（かな）", placeholder="例: ヤマダ ハナコ")
             new_cert_date = st.text_input("資格取得日", placeholder="例: 令和6年4月1日")
             new_cert_type = st.text_input("資格種別", placeholder="例: 保育士資格を保有し、補足研修を修了した者")
+            new_facility = st.selectbox("所属施設", facility_labels_staff, index=0)
+            new_facility_id = facility_options_staff[facility_labels_staff.index(new_facility)]
             
             col_submit, col_cancel = st.columns(2)
             with col_submit:
@@ -2009,7 +2069,7 @@ def show_settings():
             
             if submitted:
                 if new_name.strip():
-                    add_staff(new_name.strip(), new_kana.strip(), new_cert_date.strip(), new_cert_type.strip())
+                    add_staff(new_name.strip(), new_kana.strip(), new_cert_date.strip(), new_cert_type.strip(), new_facility_id)
                     st.session_state.show_add_form = False
                     set_success_message(f"✅ スタッフ「{new_name}」を登録しました", "staff_add")
                     st.rerun()
@@ -2040,6 +2100,10 @@ def show_settings():
                         edit_kana = st.text_input("氏名（かな）", value=staff.get('name_kana', '') or '')
                         edit_cert_date = st.text_input("資格取得日", value=staff.get('certification_date', '') or '')
                         edit_cert_type = st.text_input("資格種別", value=staff.get('certification_type', '') or '')
+                        current_facility_id = staff.get('facility_id', 'both') or 'both'
+                        current_facility_idx = facility_options_staff.index(current_facility_id) if current_facility_id in facility_options_staff else 0
+                        edit_facility = st.selectbox("所属施設", facility_labels_staff, index=current_facility_idx)
+                        edit_facility_id = facility_options_staff[facility_labels_staff.index(edit_facility)]
                         
                         col1, col2, col3 = st.columns(3)
                         with col1:
@@ -2052,7 +2116,7 @@ def show_settings():
                         if save_btn:
                             if edit_name.strip():
                                 update_staff(staff_id, edit_name.strip(), edit_kana.strip(), 
-                                           edit_cert_date.strip(), edit_cert_type.strip())
+                                           edit_cert_date.strip(), edit_cert_type.strip(), edit_facility_id)
                                 st.session_state.editing_staff_id = None
                                 set_success_message(f"✅ スタッフ「{edit_name}」を更新しました", "staff_update")
                                 st.rerun()
@@ -2069,12 +2133,15 @@ def show_settings():
                             set_success_message(f"🗑️ スタッフ「{staff['name']}」を削除しました", "staff_delete")
                             st.rerun()
                 else:
+                    staff_facility = staff.get('facility_id', 'both') or 'both'
+                    facility_display = "両方" if staff_facility == 'both' else ("こぐまハウス" if staff_facility == FACILITY_HOUSE else "こぐまbaby")
                     st.markdown(f"""
                     <div style="background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:8px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
                             <div>
                                 <strong style="font-size:1.1rem;">{staff['name']}</strong>
                                 <span style="color:#888;margin-left:8px;">({staff.get('name_kana', '') or '-'})</span>
+                                <span style="background:#e3f2fd;color:#1976d2;padding:2px 8px;border-radius:4px;font-size:0.75rem;margin-left:8px;">{facility_display}</span>
                             </div>
                         </div>
                         <div style="font-size:0.85rem;color:#666;margin-top:4px;">

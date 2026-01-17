@@ -10,6 +10,11 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+FACILITY_HOUSE = "house"
+FACILITY_BABY = "baby"
+DEFAULT_FACILITY = FACILITY_HOUSE
+
+
 def migrate_database():
     """既存データベースに不足カラムを追加するマイグレーション"""
     conn = get_connection()
@@ -21,6 +26,7 @@ def migrate_database():
         'option_price': 'INTEGER DEFAULT 0',
         'service_category': 'TEXT',
         'welfare_service': 'INTEGER DEFAULT 0',
+        'facility_id': f"TEXT DEFAULT '{DEFAULT_FACILITY}'",
     }
     
     cursor.execute("PRAGMA table_info(reservations)")
@@ -30,6 +36,23 @@ def migrate_database():
         if col_name not in existing_cols:
             try:
                 cursor.execute(f"ALTER TABLE reservations ADD COLUMN {col_name} {col_type}")
+                if col_name == 'facility_id':
+                    cursor.execute(f"UPDATE reservations SET facility_id = '{DEFAULT_FACILITY}' WHERE facility_id IS NULL")
+            except:
+                pass
+    
+    staff_columns = {
+        'facility_id': f"TEXT DEFAULT '{DEFAULT_FACILITY}'",
+    }
+    
+    cursor.execute("PRAGMA table_info(staff)")
+    existing_staff_cols = {row[1] for row in cursor.fetchall()}
+    
+    for col_name, col_type in staff_columns.items():
+        if col_name not in existing_staff_cols:
+            try:
+                cursor.execute(f"ALTER TABLE staff ADD COLUMN {col_name} {col_type}")
+                cursor.execute(f"UPDATE staff SET facility_id = 'both' WHERE facility_id IS NULL")
             except:
                 pass
     
@@ -41,7 +64,7 @@ def init_database():
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS reservations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reservation_datetime TEXT,
@@ -60,6 +83,7 @@ def init_database():
             facility_fee INTEGER DEFAULT 0,
             option_price INTEGER DEFAULT 0,
             service_category TEXT,
+            facility_id TEXT DEFAULT '{DEFAULT_FACILITY}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -111,6 +135,7 @@ def init_database():
             name_kana TEXT,
             certification_date TEXT,
             certification_type TEXT,
+            facility_id TEXT DEFAULT 'both',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -118,11 +143,11 @@ def init_database():
     cursor.execute("SELECT COUNT(*) FROM staff")
     if cursor.fetchone()[0] == 0:
         default_staff = [
-            ("黒田千景", "クロダチカゲ", "令和6年3月8日", "居宅型保育基礎研修修了者"),
-            ("由良清湖", "ユラセイコ", "令和5年4月1日", "保育士資格を保有し、補足研修を修了した者"),
+            ("黒田千景", "クロダチカゲ", "令和6年3月8日", "居宅型保育基礎研修修了者", "both"),
+            ("由良清湖", "ユラセイコ", "令和5年4月1日", "保育士資格を保有し、補足研修を修了した者", "both"),
         ]
         cursor.executemany(
-            "INSERT INTO staff (name, name_kana, certification_date, certification_type) VALUES (?, ?, ?, ?)",
+            "INSERT INTO staff (name, name_kana, certification_date, certification_type, facility_id) VALUES (?, ?, ?, ?, ?)",
             default_staff
         )
     
@@ -178,7 +203,10 @@ def parse_datetime_range(datetime_str: str) -> tuple:
     except:
         return datetime_str, "", ""
 
-def import_csv_data(df) -> int:
+def import_csv_data(df, facility_id: str = None) -> int:
+    if facility_id is None:
+        facility_id = DEFAULT_FACILITY
+    
     conn = get_connection()
     cursor = conn.cursor()
     imported_count = 0
@@ -208,11 +236,11 @@ def import_csv_data(df) -> int:
                     except:
                         pass
             
-            facility_fee = 0
+            facility_fee_amount = 0
             option_price = 0
             if '選択肢の合計料金' in row and row['選択肢の合計料金']:
                 try:
-                    facility_fee = int(str(row['選択肢の合計料金']).replace(',', '').replace('¥', ''))
+                    facility_fee_amount = int(str(row['選択肢の合計料金']).replace(',', '').replace('¥', ''))
                 except:
                     pass
             
@@ -223,8 +251,8 @@ def import_csv_data(df) -> int:
             
             cursor.execute('''
                 SELECT id FROM reservations 
-                WHERE reservation_datetime = ? AND child_name = ?
-            ''', (datetime_str, child_name))
+                WHERE reservation_datetime = ? AND child_name = ? AND facility_id = ?
+            ''', (datetime_str, child_name, facility_id))
             
             if cursor.fetchone():
                 continue
@@ -234,13 +262,13 @@ def import_csv_data(df) -> int:
                     reservation_datetime, reservation_date, start_time, end_time,
                     reservation_type, child_name, child_name_kana, email, address,
                     guardian_name, management_memo, welfare_service, base_price,
-                    facility_fee, option_price, service_category
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    facility_fee, option_price, service_category, facility_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 datetime_str, date_part, start_time, end_time,
                 reservation_type, child_name, child_name_kana, email, address,
                 guardian_name, management_memo, welfare_service, base_price,
-                facility_fee, option_price, service_category
+                facility_fee_amount, option_price, service_category, facility_id
             ))
             
             reservation_id = cursor.lastrowid
@@ -248,7 +276,7 @@ def import_csv_data(df) -> int:
             cursor.execute('''
                 INSERT INTO attendance_records (reservation_id, total_amount)
                 VALUES (?, ?)
-            ''', (reservation_id, base_price + facility_fee))
+            ''', (reservation_id, base_price + facility_fee_amount))
             
             imported_count += 1
             
@@ -260,38 +288,61 @@ def import_csv_data(df) -> int:
     conn.close()
     return imported_count
 
-def get_reservations_by_date(target_date: str) -> List[Dict]:
+def get_reservations_by_date(target_date: str, facility_id: str = None) -> List[Dict]:
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
-               a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
-               a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
-               a.discount2_amount, a.additional_fee, a.additional_note,
-               a.staff_name, a.certification_date, a.certification_type, a.total_amount
-        FROM reservations r
-        LEFT JOIN attendance_records a ON r.id = a.reservation_id
-        WHERE r.reservation_date = ?
-        ORDER BY r.start_time
-    ''', (target_date,))
+    if facility_id:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date = ? AND r.facility_id = ?
+            ORDER BY r.start_time
+        ''', (target_date, facility_id))
+    else:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date = ?
+            ORDER BY r.start_time
+        ''', (target_date,))
     
     rows = cursor.fetchall()
     conn.close()
     
     return [dict(row) for row in rows]
 
-def get_all_reservations() -> List[Dict]:
+def get_all_reservations(facility_id: str = None) -> List[Dict]:
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
-               a.is_cancelled, a.cancel_type, a.total_amount
-        FROM reservations r
-        LEFT JOIN attendance_records a ON r.id = a.reservation_id
-        ORDER BY r.reservation_date DESC, r.start_time
-    ''')
+    if facility_id:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.facility_id = ?
+            ORDER BY r.reservation_date DESC, r.start_time
+        ''', (facility_id,))
+    else:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            ORDER BY r.reservation_date DESC, r.start_time
+        ''')
     
     rows = cursor.fetchall()
     conn.close()
@@ -299,7 +350,7 @@ def get_all_reservations() -> List[Dict]:
     return [dict(row) for row in rows]
 
 
-def get_reservations_by_month(year: int, month: int) -> List[Dict]:
+def get_reservations_by_month(year: int, month: int, facility_id: str = None) -> List[Dict]:
     """指定した年月の予約を取得"""
     conn = get_connection()
     cursor = conn.cursor()
@@ -310,17 +361,30 @@ def get_reservations_by_month(year: int, month: int) -> List[Dict]:
     else:
         end_date = f"{year:04d}-{month+1:02d}-01"
     
-    cursor.execute('''
-        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
-               a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
-               a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
-               a.discount2_amount, a.additional_fee, a.additional_note,
-               a.staff_name, a.certification_date, a.certification_type, a.total_amount
-        FROM reservations r
-        LEFT JOIN attendance_records a ON r.id = a.reservation_id
-        WHERE r.reservation_date >= ? AND r.reservation_date < ?
-        ORDER BY r.reservation_date, r.start_time
-    ''', (start_date, end_date))
+    if facility_id:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date >= ? AND r.reservation_date < ? AND r.facility_id = ?
+            ORDER BY r.reservation_date, r.start_time
+        ''', (start_date, end_date, facility_id))
+    else:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date >= ? AND r.reservation_date < ?
+            ORDER BY r.reservation_date, r.start_time
+        ''', (start_date, end_date))
     
     rows = cursor.fetchall()
     conn.close()
@@ -328,22 +392,35 @@ def get_reservations_by_month(year: int, month: int) -> List[Dict]:
     return [dict(row) for row in rows]
 
 
-def get_reservations_by_date_range(start_date: str, end_date: str) -> List[Dict]:
+def get_reservations_by_date_range(start_date: str, end_date: str, facility_id: str = None) -> List[Dict]:
     """指定した日付範囲の予約を取得"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('''
-        SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
-               a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
-               a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
-               a.discount2_amount, a.additional_fee, a.additional_note,
-               a.staff_name, a.certification_date, a.certification_type, a.total_amount
-        FROM reservations r
-        LEFT JOIN attendance_records a ON r.id = a.reservation_id
-        WHERE r.reservation_date >= ? AND r.reservation_date <= ?
-        ORDER BY r.reservation_date, r.start_time
-    ''', (start_date, end_date))
+    if facility_id:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date >= ? AND r.reservation_date <= ? AND r.facility_id = ?
+            ORDER BY r.reservation_date, r.start_time
+        ''', (start_date, end_date, facility_id))
+    else:
+        cursor.execute('''
+            SELECT r.*, a.id as attendance_id, a.check_in_time, a.check_out_time,
+                   a.is_cancelled, a.cancel_type, a.extension_minutes, a.extension_fee,
+                   a.transport_fee, a.discount1, a.discount1_amount, a.discount2,
+                   a.discount2_amount, a.additional_fee, a.additional_note,
+                   a.staff_name, a.certification_date, a.certification_type, a.total_amount
+            FROM reservations r
+            LEFT JOIN attendance_records a ON r.id = a.reservation_id
+            WHERE r.reservation_date >= ? AND r.reservation_date <= ?
+            ORDER BY r.reservation_date, r.start_time
+        ''', (start_date, end_date))
     
     rows = cursor.fetchall()
     conn.close()
@@ -456,25 +533,34 @@ def get_care_records(reservation_id: int) -> List[Dict]:
     
     return [dict(row) for row in rows]
 
-def get_staff_list() -> List[Dict]:
+def get_staff_list(facility_id: str = None) -> List[Dict]:
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('SELECT * FROM staff ORDER BY name')
+    if facility_id:
+        cursor.execute('''
+            SELECT * FROM staff 
+            WHERE facility_id = ? OR facility_id = 'both'
+            ORDER BY name
+        ''', (facility_id,))
+    else:
+        cursor.execute('SELECT * FROM staff ORDER BY name')
+    
     rows = cursor.fetchall()
     conn.close()
     
     return [dict(row) for row in rows]
 
 
-def add_staff(name: str, name_kana: str, certification_date: str, certification_type: str) -> int:
+def add_staff(name: str, name_kana: str, certification_date: str, 
+              certification_type: str, facility_id: str = 'both') -> int:
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
-        INSERT INTO staff (name, name_kana, certification_date, certification_type)
-        VALUES (?, ?, ?, ?)
-    ''', (name, name_kana, certification_date, certification_type))
+        INSERT INTO staff (name, name_kana, certification_date, certification_type, facility_id)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (name, name_kana, certification_date, certification_type, facility_id))
     
     staff_id = cursor.lastrowid
     conn.commit()
@@ -484,15 +570,15 @@ def add_staff(name: str, name_kana: str, certification_date: str, certification_
 
 
 def update_staff(staff_id: int, name: str, name_kana: str, 
-                 certification_date: str, certification_type: str):
+                 certification_date: str, certification_type: str, facility_id: str = 'both'):
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
         UPDATE staff
-        SET name = ?, name_kana = ?, certification_date = ?, certification_type = ?
+        SET name = ?, name_kana = ?, certification_date = ?, certification_type = ?, facility_id = ?
         WHERE id = ?
-    ''', (name, name_kana, certification_date, certification_type, staff_id))
+    ''', (name, name_kana, certification_date, certification_type, facility_id, staff_id))
     
     conn.commit()
     conn.close()
