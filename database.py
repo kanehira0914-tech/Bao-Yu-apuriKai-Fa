@@ -466,6 +466,59 @@ def get_staff_list() -> List[Dict]:
     
     return [dict(row) for row in rows]
 
+
+def add_staff(name: str, name_kana: str, certification_date: str, certification_type: str) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO staff (name, name_kana, certification_date, certification_type)
+        VALUES (?, ?, ?, ?)
+    ''', (name, name_kana, certification_date, certification_type))
+    
+    staff_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return staff_id
+
+
+def update_staff(staff_id: int, name: str, name_kana: str, 
+                 certification_date: str, certification_type: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE staff
+        SET name = ?, name_kana = ?, certification_date = ?, certification_type = ?
+        WHERE id = ?
+    ''', (name, name_kana, certification_date, certification_type, staff_id))
+    
+    conn.commit()
+    conn.close()
+
+
+def delete_staff(staff_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM staff WHERE id = ?', (staff_id,))
+    
+    conn.commit()
+    conn.close()
+
+
+def get_staff_by_id(staff_id: int) -> Optional[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM staff WHERE id = ?', (staff_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    return dict(row) if row else None
+
+
 def get_reservation_by_id(reservation_id: int) -> Optional[Dict]:
     conn = get_connection()
     cursor = conn.cursor()

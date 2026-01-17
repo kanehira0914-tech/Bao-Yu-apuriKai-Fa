@@ -8,7 +8,8 @@ from database import (
     get_all_reservations, update_attendance, add_care_record,
     get_care_records, get_staff_list, get_reservation_by_id,
     get_reservations_by_month, get_reservations_by_date_range,
-    save_nap_check_log, get_nap_check_logs, delete_nap_check_logs
+    save_nap_check_log, get_nap_check_logs, delete_nap_check_logs,
+    add_staff, update_staff, delete_staff, get_staff_by_id
 )
 from pricing import (
     calculate_total_price, calculate_extension_fee, needs_certification,
@@ -589,6 +590,11 @@ def main():
         navigate_to("fee_calc")
         st.rerun()
     
+    st.sidebar.markdown("---")
+    if st.sidebar.button("⚙️ 設定", use_container_width=True):
+        navigate_to("settings")
+        st.rerun()
+    
     page = st.session_state.current_page
     
     if page == "home":
@@ -605,6 +611,8 @@ def main():
         show_receipt_generation()
     elif page == "fee_calc":
         show_fee_calculator()
+    elif page == "settings":
+        show_settings()
     else:
         show_home()
 
@@ -1960,6 +1968,128 @@ def show_fee_calculator():
                 st.markdown(f"+ 食事代: ¥{result.meal_fee:,}")
             
             st.markdown(f"## 💴 合計: ¥{result.total:,}")
+
+
+def show_settings():
+    st.markdown('<div class="main-header">⚙️ 設定</div>', unsafe_allow_html=True)
+    
+    if st.button("← ホームに戻る", use_container_width=False):
+        navigate_to("home")
+        st.rerun()
+    
+    st.markdown("---")
+    st.markdown("### 👥 スタッフ管理")
+    
+    if 'editing_staff_id' not in st.session_state:
+        st.session_state.editing_staff_id = None
+    if 'show_add_form' not in st.session_state:
+        st.session_state.show_add_form = False
+    
+    staff_list = get_staff_list()
+    
+    col_add, col_spacer = st.columns([1, 3])
+    with col_add:
+        if st.button("➕ 新規スタッフ追加", type="primary", use_container_width=True):
+            st.session_state.show_add_form = True
+            st.session_state.editing_staff_id = None
+    
+    if st.session_state.show_add_form:
+        st.markdown("#### 新規スタッフ登録")
+        with st.form("add_staff_form"):
+            new_name = st.text_input("氏名 *", placeholder="例: 山田 花子")
+            new_kana = st.text_input("氏名（かな）", placeholder="例: ヤマダ ハナコ")
+            new_cert_date = st.text_input("資格取得日", placeholder="例: 令和6年4月1日")
+            new_cert_type = st.text_input("資格種別", placeholder="例: 保育士資格を保有し、補足研修を修了した者")
+            
+            col_submit, col_cancel = st.columns(2)
+            with col_submit:
+                submitted = st.form_submit_button("✅ 登録", type="primary", use_container_width=True)
+            with col_cancel:
+                cancelled = st.form_submit_button("❌ キャンセル", use_container_width=True)
+            
+            if submitted:
+                if new_name.strip():
+                    add_staff(new_name.strip(), new_kana.strip(), new_cert_date.strip(), new_cert_type.strip())
+                    st.session_state.show_add_form = False
+                    set_success_message(f"✅ スタッフ「{new_name}」を登録しました", "staff_add")
+                    st.rerun()
+                else:
+                    st.error("氏名を入力してください")
+            
+            if cancelled:
+                st.session_state.show_add_form = False
+                st.rerun()
+        st.markdown("---")
+    
+    show_success_message("staff_add")
+    show_success_message("staff_update")
+    show_success_message("staff_delete")
+    
+    if staff_list:
+        st.markdown(f"**登録済みスタッフ: {len(staff_list)}名**")
+        
+        for staff in staff_list:
+            staff_id = staff['id']
+            is_editing = st.session_state.editing_staff_id == staff_id
+            
+            with st.container():
+                if is_editing:
+                    st.markdown(f"#### ✏️ 編集中: {staff['name']}")
+                    with st.form(f"edit_staff_form_{staff_id}"):
+                        edit_name = st.text_input("氏名 *", value=staff['name'])
+                        edit_kana = st.text_input("氏名（かな）", value=staff.get('name_kana', '') or '')
+                        edit_cert_date = st.text_input("資格取得日", value=staff.get('certification_date', '') or '')
+                        edit_cert_type = st.text_input("資格種別", value=staff.get('certification_type', '') or '')
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            save_btn = st.form_submit_button("💾 保存", type="primary", use_container_width=True)
+                        with col2:
+                            cancel_btn = st.form_submit_button("❌ キャンセル", use_container_width=True)
+                        with col3:
+                            delete_btn = st.form_submit_button("🗑️ 削除", use_container_width=True)
+                        
+                        if save_btn:
+                            if edit_name.strip():
+                                update_staff(staff_id, edit_name.strip(), edit_kana.strip(), 
+                                           edit_cert_date.strip(), edit_cert_type.strip())
+                                st.session_state.editing_staff_id = None
+                                set_success_message(f"✅ スタッフ「{edit_name}」を更新しました", "staff_update")
+                                st.rerun()
+                            else:
+                                st.error("氏名を入力してください")
+                        
+                        if cancel_btn:
+                            st.session_state.editing_staff_id = None
+                            st.rerun()
+                        
+                        if delete_btn:
+                            delete_staff(staff_id)
+                            st.session_state.editing_staff_id = None
+                            set_success_message(f"🗑️ スタッフ「{staff['name']}」を削除しました", "staff_delete")
+                            st.rerun()
+                else:
+                    st.markdown(f"""
+                    <div style="background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+                            <div>
+                                <strong style="font-size:1.1rem;">{staff['name']}</strong>
+                                <span style="color:#888;margin-left:8px;">({staff.get('name_kana', '') or '-'})</span>
+                            </div>
+                        </div>
+                        <div style="font-size:0.85rem;color:#666;margin-top:4px;">
+                            資格取得日: {staff.get('certification_date', '-') or '-'}<br>
+                            資格種別: {staff.get('certification_type', '-') or '-'}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("✏️ 編集", key=f"edit_staff_{staff_id}", use_container_width=False):
+                        st.session_state.editing_staff_id = staff_id
+                        st.session_state.show_add_form = False
+                        st.rerun()
+    else:
+        st.info("スタッフが登録されていません。「新規スタッフ追加」ボタンから登録してください。")
 
 
 if __name__ == "__main__":
