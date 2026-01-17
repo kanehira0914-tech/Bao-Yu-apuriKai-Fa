@@ -538,6 +538,10 @@ def show_today_children():
 def show_reservations():
     st.markdown('<div class="main-header">📋 予約一覧</div>', unsafe_allow_html=True)
     
+    if st.session_state.selected_reservation_id:
+        show_detail_input(st.session_state.selected_reservation_id)
+        return
+    
     today = date.today()
     
     st.markdown("**📅 期間選択**")
