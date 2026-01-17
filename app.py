@@ -7,7 +7,8 @@ from database import (
     init_database, import_csv_data, get_reservations_by_date,
     get_all_reservations, update_attendance, add_care_record,
     get_care_records, get_staff_list, get_reservation_by_id,
-    get_reservations_by_month, get_reservations_by_date_range
+    get_reservations_by_month, get_reservations_by_date_range,
+    save_nap_check_log, get_nap_check_logs, delete_nap_check_logs
 )
 from pricing import (
     calculate_total_price, calculate_extension_fee, needs_certification,
@@ -182,6 +183,76 @@ st.markdown("""
     .css-1oe5cao {
         display: none;
     }
+    
+    /* 午睡チェック監査用テーブル */
+    .nap-check-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+        font-size: 0.95rem;
+    }
+    .nap-check-table th, .nap-check-table td {
+        border: 1px solid #ccc;
+        padding: 8px 12px;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .nap-check-table th {
+        background: #f5f0e8;
+        font-weight: bold;
+        color: #5D4E37;
+    }
+    .nap-check-table tr:nth-child(even) {
+        background: #fafafa;
+    }
+    .nap-check-table tr:hover {
+        background: #f0ebe3;
+    }
+    
+    /* 矢印ボタン */
+    .arrow-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border: 2px solid #ccc;
+        border-radius: 8px;
+        background: white;
+        font-size: 1.2rem;
+        cursor: pointer;
+        margin: 2px;
+        transition: all 0.2s;
+    }
+    .arrow-btn:hover {
+        background: #f0f0f0;
+    }
+    .arrow-btn.selected {
+        background: #e3f2fd;
+        border-color: #2196f3;
+        color: #1976d2;
+    }
+    
+    /* 体位修正マーク（◯） */
+    .corrected-mark {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+    }
+    .corrected-mark.active::after {
+        content: '';
+        position: absolute;
+        width: 36px;
+        height: 36px;
+        border: 3px solid #e53935;
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -310,6 +381,179 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
             care_data['other_note'] = details
     
     st.session_state[db_key] = care_data
+
+
+def generate_5min_intervals(start_time_str: str, end_time_str: str):
+    """開始時間から終了時間まで5分刻みの時刻リストを生成"""
+    intervals = []
+    try:
+        start_parts = start_time_str.split(':')
+        start_h, start_m = int(start_parts[0]), int(start_parts[1])
+        
+        if end_time_str:
+            end_parts = end_time_str.split(':')
+            end_h, end_m = int(end_parts[0]), int(end_parts[1])
+        else:
+            end_h, end_m = start_h + 2, start_m
+        
+        current_h, current_m = start_h, start_m
+        
+        while (current_h < end_h) or (current_h == end_h and current_m <= end_m):
+            intervals.append(f"{current_h:02d}:{current_m:02d}")
+            current_m += 5
+            if current_m >= 60:
+                current_m = 0
+                current_h += 1
+            if current_h >= 24:
+                break
+            if len(intervals) > 100:
+                break
+                
+    except Exception as e:
+        pass
+    
+    return intervals
+
+
+def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: str):
+    """午睡チェック詳細画面（5分刻みテーブル）"""
+    
+    st.markdown(f"### 😴 お昼寝{nap_index} 詳細チェック")
+    st.markdown(f"**時間帯**: {start_time} 〜 {end_time if end_time else '（終了未設定）'}")
+    
+    intervals = generate_5min_intervals(start_time, end_time if end_time else "")
+    
+    if not intervals:
+        st.warning("入眠・起床時間を設定してから詳細チェックを行ってください")
+        return
+    
+    existing_logs = get_nap_check_logs(rid, nap_index)
+    logs_dict = {log['check_time']: log for log in existing_logs}
+    
+    staff_list = get_staff_list()
+    staff_names = ["---"] + [s['name'] for s in staff_list]
+    
+    nap_state_key = f"nap_check_state_{rid}_{nap_index}"
+    if nap_state_key not in st.session_state:
+        st.session_state[nap_state_key] = {}
+    
+    for time_slot in intervals:
+        if time_slot not in st.session_state[nap_state_key]:
+            if time_slot in logs_dict:
+                log = logs_dict[time_slot]
+                st.session_state[nap_state_key][time_slot] = {
+                    'direction': log['arrow_direction'],
+                    'corrected': bool(log['is_corrected']),
+                    'staff': log['staff_name'] or "---"
+                }
+            else:
+                st.session_state[nap_state_key][time_slot] = {
+                    'direction': 'up',
+                    'corrected': False,
+                    'staff': "---"
+                }
+    
+    arrow_labels = {'up': '↑', 'down': '↓', 'left': '←', 'right': '→'}
+    arrow_names = {'up': '仰向け', 'down': 'うつ伏せ', 'left': '左向き', 'right': '右向き'}
+    
+    st.markdown("---")
+    st.markdown("**凡例**: ↑仰向け ↓うつ伏せ ←左向き →右向き  ◯=体位修正あり")
+    st.markdown("---")
+    
+    col_h1, col_h2, col_h3, col_h4 = st.columns([1, 2, 1, 2])
+    with col_h1:
+        st.markdown("**時刻**")
+    with col_h2:
+        st.markdown("**姿勢**")
+    with col_h3:
+        st.markdown("**修正**")
+    with col_h4:
+        st.markdown("**担当者**")
+    
+    st.markdown("---")
+    
+    for idx, time_slot in enumerate(intervals):
+        state = st.session_state[nap_state_key][time_slot]
+        
+        col1, col2, col3, col4 = st.columns([1, 2, 1, 2])
+        
+        with col1:
+            st.markdown(f"**{time_slot}**")
+        
+        with col2:
+            directions = ['up', 'down', 'left', 'right']
+            dir_cols = st.columns(4)
+            for d_idx, direction in enumerate(directions):
+                with dir_cols[d_idx]:
+                    is_selected = state['direction'] == direction
+                    btn_label = arrow_labels[direction]
+                    if state['corrected'] and is_selected:
+                        btn_label = f"⭕{arrow_labels[direction]}"
+                    btn_type = "primary" if is_selected else "secondary"
+                    if st.button(btn_label, key=f"arrow_{rid}_{nap_index}_{time_slot}_{direction}", 
+                                type=btn_type, use_container_width=True):
+                        st.session_state[nap_state_key][time_slot]['direction'] = direction
+                        st.rerun()
+        
+        with col3:
+            corrected = st.checkbox("◯", value=state['corrected'], 
+                                   key=f"corrected_{rid}_{nap_index}_{time_slot}",
+                                   label_visibility="collapsed")
+            if corrected != state['corrected']:
+                st.session_state[nap_state_key][time_slot]['corrected'] = corrected
+        
+        with col4:
+            prev_staff = "---"
+            if idx > 0:
+                prev_time = intervals[idx - 1]
+                prev_staff = st.session_state[nap_state_key].get(prev_time, {}).get('staff', "---")
+            
+            current_staff = state['staff']
+            if current_staff == "---" and prev_staff != "---":
+                current_staff = prev_staff
+                st.session_state[nap_state_key][time_slot]['staff'] = current_staff
+            
+            staff_idx = staff_names.index(current_staff) if current_staff in staff_names else 0
+            selected_staff = st.selectbox(
+                "担当",
+                staff_names,
+                index=staff_idx,
+                key=f"staff_{rid}_{nap_index}_{time_slot}",
+                label_visibility="collapsed"
+            )
+            if selected_staff != state['staff']:
+                st.session_state[nap_state_key][time_slot]['staff'] = selected_staff
+        
+        st.markdown('<hr style="margin:4px 0; border:none; border-top:1px solid #eee;">', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    col_save, col_clear = st.columns(2)
+    with col_save:
+        if st.button("💾 一括保存", key=f"save_nap_check_{rid}_{nap_index}", 
+                    type="primary", use_container_width=True):
+            saved_count = 0
+            for time_slot in intervals:
+                state = st.session_state[nap_state_key][time_slot]
+                if state['staff'] != "---":
+                    save_nap_check_log(
+                        rid, nap_index, time_slot,
+                        state['direction'], state['corrected'], state['staff']
+                    )
+                    saved_count += 1
+            if saved_count > 0:
+                st.success(f"✅ {saved_count}件の午睡チェックを保存しました")
+            else:
+                st.warning("担当者を選択してから保存してください")
+    
+    with col_clear:
+        if st.button("🗑️ クリア", key=f"clear_nap_check_{rid}_{nap_index}", use_container_width=True):
+            delete_nap_check_logs(rid, nap_index)
+            if nap_state_key in st.session_state:
+                del st.session_state[nap_state_key]
+            st.success("午睡チェック記録をクリアしました")
+            st.rerun()
+
 
 def navigate_to(page_name: str):
     st.session_state.current_page = page_name
@@ -943,27 +1187,61 @@ def show_care_tab(res: dict):
     
     st.markdown("**😴 お昼寝（3回分）**")
     show_success_message("nap")
+    
+    nap_detail_key = f"nap_detail_open_{rid}"
+    if nap_detail_key not in st.session_state:
+        st.session_state[nap_detail_key] = None
+    
     for i in range(1, 4):
         nap_start_default = care_data.get(f'nap_start_{i}', "---")
         nap_end_default = care_data.get(f'nap_end_{i}', "---")
         nap_start_idx = nap_time_options.index(nap_start_default) if nap_start_default in nap_time_options else 0
         nap_end_idx = nap_time_options.index(nap_end_default) if nap_end_default in nap_time_options else 0
+        
+        st.markdown(f"**お昼寝{i}**")
         col1, col2 = st.columns(2)
         with col1:
             nap_start = st.selectbox(f"開始{i}", nap_time_options, index=nap_start_idx, key=f"nap_start_{rid}_{i}")
         with col2:
             nap_end = st.selectbox(f"終了{i}", nap_time_options, index=nap_end_idx, key=f"nap_end_{rid}_{i}")
         
-        if st.button(f"😴 お昼寝{i}を記録", key=f"save_nap_{rid}_{i}", use_container_width=True):
+        col_save, col_detail = st.columns(2)
+        with col_save:
+            if st.button(f"😴 記録", key=f"save_nap_{rid}_{i}", use_container_width=True):
+                if nap_start != "---":
+                    if nap_end != "---":
+                        add_care_record(rid, f'nap_{i}', f"{nap_start}〜{nap_end}")
+                    else:
+                        add_care_record(rid, f'nap_{i}', f"{nap_start}〜")
+                    set_success_message(f"✅ お昼寝{i}を記録しました", "nap")
+                    if db_key in st.session_state:
+                        del st.session_state[db_key]
+                    st.rerun()
+        
+        with col_detail:
             if nap_start != "---":
-                if nap_end != "---":
-                    add_care_record(rid, f'nap_{i}', f"{nap_start}〜{nap_end}")
-                else:
-                    add_care_record(rid, f'nap_{i}', f"{nap_start}〜")
-                set_success_message(f"✅ お昼寝{i}を記録しました", "nap")
-                if db_key in st.session_state:
-                    del st.session_state[db_key]
-                st.rerun()
+                existing_checks = get_nap_check_logs(rid, i)
+                check_count = len(existing_checks)
+                detail_label = f"📋 詳細 ({check_count})" if check_count > 0 else "📋 詳細"
+                if st.button(detail_label, key=f"nap_detail_{rid}_{i}", use_container_width=True):
+                    st.session_state[nap_detail_key] = i
+                    st.rerun()
+            else:
+                st.button("📋 詳細", key=f"nap_detail_{rid}_{i}_disabled", 
+                         use_container_width=True, disabled=True)
+        
+        if st.session_state[nap_detail_key] == i:
+            st.markdown("---")
+            col_back, col_spacer = st.columns([1, 3])
+            with col_back:
+                if st.button("← 閉じる", key=f"close_nap_detail_{rid}_{i}"):
+                    st.session_state[nap_detail_key] = None
+                    st.rerun()
+            
+            show_nap_check_detail(rid, i, nap_start, nap_end if nap_end != "---" else "")
+            st.markdown("---")
+        
+        st.markdown('<hr style="margin:8px 0; border:none; border-top:1px dashed #ddd;">', unsafe_allow_html=True)
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
