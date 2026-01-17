@@ -386,15 +386,16 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
 def generate_5min_intervals(start_time_str: str, end_time_str: str):
     """開始時間から終了時間まで5分刻みの時刻リストを生成"""
     intervals = []
+    
+    if not start_time_str or not end_time_str:
+        return intervals
+    
     try:
         start_parts = start_time_str.split(':')
         start_h, start_m = int(start_parts[0]), int(start_parts[1])
         
-        if end_time_str:
-            end_parts = end_time_str.split(':')
-            end_h, end_m = int(end_parts[0]), int(end_parts[1])
-        else:
-            end_h, end_m = start_h + 2, start_m
+        end_parts = end_time_str.split(':')
+        end_h, end_m = int(end_parts[0]), int(end_parts[1])
         
         current_h, current_m = start_h, start_m
         
@@ -528,23 +529,27 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     
     st.markdown("---")
     
+    missing_staff_count = sum(1 for ts in intervals if st.session_state[nap_state_key][ts]['staff'] == "---")
+    if missing_staff_count > 0:
+        st.warning(f"⚠️ {missing_staff_count}件の時刻で担当者が未選択です")
+    
     col_save, col_clear = st.columns(2)
     with col_save:
         if st.button("💾 一括保存", key=f"save_nap_check_{rid}_{nap_index}", 
                     type="primary", use_container_width=True):
-            saved_count = 0
-            for time_slot in intervals:
-                state = st.session_state[nap_state_key][time_slot]
-                if state['staff'] != "---":
+            if missing_staff_count > 0:
+                st.error("全ての時刻に担当者を選択してから保存してください")
+            else:
+                for time_slot in intervals:
+                    state = st.session_state[nap_state_key][time_slot]
                     save_nap_check_log(
                         rid, nap_index, time_slot,
                         state['direction'], state['corrected'], state['staff']
                     )
-                    saved_count += 1
-            if saved_count > 0:
-                st.success(f"✅ {saved_count}件の午睡チェックを保存しました")
-            else:
-                st.warning("担当者を選択してから保存してください")
+                st.success(f"✅ {len(intervals)}件の午睡チェックを保存しました")
+                if nap_state_key in st.session_state:
+                    del st.session_state[nap_state_key]
+                st.rerun()
     
     with col_clear:
         if st.button("🗑️ クリア", key=f"clear_nap_check_{rid}_{nap_index}", use_container_width=True):
@@ -1219,13 +1224,20 @@ def show_care_tab(res: dict):
                     st.rerun()
         
         with col_detail:
-            if nap_start != "---":
+            if nap_start != "---" and nap_end != "---":
                 existing_checks = get_nap_check_logs(rid, i)
                 check_count = len(existing_checks)
                 detail_label = f"📋 詳細 ({check_count})" if check_count > 0 else "📋 詳細"
                 if st.button(detail_label, key=f"nap_detail_{rid}_{i}", use_container_width=True):
+                    nap_state_key = f"nap_check_state_{rid}_{i}"
+                    if nap_state_key in st.session_state:
+                        del st.session_state[nap_state_key]
                     st.session_state[nap_detail_key] = i
                     st.rerun()
+            elif nap_start != "---":
+                st.button("📋 詳細", key=f"nap_detail_{rid}_{i}_no_end", 
+                         use_container_width=True, disabled=True,
+                         help="終了時間を設定してください")
             else:
                 st.button("📋 詳細", key=f"nap_detail_{rid}_{i}_disabled", 
                          use_container_width=True, disabled=True)
