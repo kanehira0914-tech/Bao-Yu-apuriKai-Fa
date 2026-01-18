@@ -762,6 +762,27 @@ def main():
 def show_home():
     facility = get_current_facility()
     facility_name = get_facility_display_name(facility)
+    
+    current_user = get_current_user()
+    user_is_admin = is_admin()
+    role_text = "👑 管理者" if user_is_admin else "👤 スタッフ"
+    user_display = current_user.get('display_name', current_user.get('username', ''))
+    
+    col_info, col_logout = st.columns([3, 1])
+    with col_info:
+        st.markdown(f"**{role_text}**: {user_display}")
+    with col_logout:
+        if st.button("🚪 ログアウト", key="logout_home", use_container_width=True):
+            logout()
+            st.rerun()
+    
+    if user_is_admin:
+        if st.button("🔧 管理者ダッシュボード", key="admin_quick", use_container_width=True):
+            navigate_to("admin")
+            st.rerun()
+    
+    st.markdown("---")
+    
     st.markdown(f'<div class="main-header">{facility_name}</div>', unsafe_allow_html=True)
     st.markdown('<p style="text-align:center;color:#8B7355;margin-bottom:1rem;">業務支援システム</p>', unsafe_allow_html=True)
     
