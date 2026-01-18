@@ -2117,6 +2117,10 @@ def show_fee_calculator():
 
 
 def show_admin_dashboard():
+    if not is_admin():
+        st.error("このページにアクセスする権限がありません。")
+        return
+    
     st.markdown('<div class="main-header">🔧 管理者ダッシュボード</div>', unsafe_allow_html=True)
     
     if st.button("← ホームに戻る", use_container_width=False):
