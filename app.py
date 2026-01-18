@@ -670,7 +670,14 @@ def main():
     facility_name = get_facility_display_name(get_current_facility())
     st.sidebar.markdown(f"## {facility_name}")
     role_display = "👑 管理者" if user_is_admin else "👤 スタッフ"
-    st.sidebar.markdown(f"{role_display}: {current_user.get('display_name', current_user.get('username'))}")
+    
+    col_user, col_logout = st.sidebar.columns([3, 1])
+    with col_user:
+        st.markdown(f"{role_display}: {current_user.get('display_name', current_user.get('username'))}")
+    with col_logout:
+        if st.button("🚪", key="logout_top", help="ログアウト"):
+            logout()
+            st.rerun()
     st.sidebar.markdown("---")
     
     if st.sidebar.button("🏠 ホーム", use_container_width=True):
