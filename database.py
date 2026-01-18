@@ -191,6 +191,51 @@ def init_database():
             ('admin', password_hash, salt, 'admin', '管理者')
         )
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fee_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            setting_key TEXT UNIQUE NOT NULL,
+            setting_value INTEGER NOT NULL,
+            category TEXT,
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    cursor.execute("SELECT COUNT(*) FROM fee_settings")
+    if cursor.fetchone()[0] == 0:
+        default_fees = [
+            ('temp_weekday_normal', 2000, 'temporary_care', '一時預かり 平日通常'),
+            ('temp_holiday_normal', 3200, 'temporary_care', '一時預かり 土日祝通常'),
+            ('temp_weekday_overtime', 2800, 'temporary_care', '一時預かり 平日時間外'),
+            ('temp_holiday_overtime', 4000, 'temporary_care', '一時預かり 土日祝時間外'),
+            ('temp_facility_fee', 550, 'temporary_care', '一時預かり 施設利用料'),
+            ('temp_sibling_discount', 400, 'temporary_care', '一時預かり 兄弟割引/H'),
+            
+            ('facility_weekday_normal', 3200, 'facility_sitter', '施設型シッター 平日通常'),
+            ('facility_holiday_normal', 4000, 'facility_sitter', '施設型シッター 土日祝通常'),
+            ('facility_weekday_overtime', 4000, 'facility_sitter', '施設型シッター 平日時間外'),
+            ('facility_holiday_overtime', 4500, 'facility_sitter', '施設型シッター 土日祝時間外'),
+            ('facility_facility_fee', 2200, 'facility_sitter', '施設型シッター 施設利用料'),
+            
+            ('home_weekday_normal', 3500, 'home_sitter', '自宅シッター 平日通常'),
+            ('home_holiday_normal', 3900, 'home_sitter', '自宅シッター 土日祝通常'),
+            ('home_weekday_overtime', 3800, 'home_sitter', '自宅シッター 平日時間外'),
+            ('home_holiday_overtime', 4200, 'home_sitter', '自宅シッター 土日祝時間外'),
+            ('home_weekday_night', 4000, 'home_sitter', '自宅シッター 平日早朝夜間'),
+            ('home_holiday_night', 4400, 'home_sitter', '自宅シッター 土日祝早朝夜間'),
+            ('home_sibling_addition', 1000, 'home_sitter', '自宅シッター 兄弟加算/H'),
+            ('home_housework_fee', 1100, 'home_sitter', '自宅シッター 家事代行オプション'),
+            
+            ('snack_price', 150, 'option', 'おやつ代'),
+            ('bento_price', 500, 'option', 'お弁当代'),
+            ('tebura_set_price', 300, 'option', '手ぶらセット'),
+        ]
+        cursor.executemany(
+            "INSERT INTO fee_settings (setting_key, setting_value, category, description) VALUES (?, ?, ?, ?)",
+            default_fees
+        )
+    
     conn.commit()
     conn.close()
     
@@ -310,6 +355,167 @@ def delete_user(user_id: int) -> bool:
         return True
     except:
         return False
+
+
+def get_all_fee_settings() -> List[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM fee_settings ORDER BY category, setting_key")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_fee_settings_by_category(category: str) -> List[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM fee_settings WHERE category = ? ORDER BY setting_key", (category,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_fee_setting(setting_key: str) -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT setting_value FROM fee_settings WHERE setting_key = ?", (setting_key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def update_fee_setting(setting_key: str, setting_value: int) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE fee_settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?",
+            (setting_value, datetime.now().isoformat(), setting_key)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+
+def get_fee_config_from_db() -> Dict:
+    """データベースから料金設定を読み込み、FEE_CONFIG形式で返す"""
+    settings = {}
+    for row in get_all_fee_settings():
+        settings[row['setting_key']] = row['setting_value']
+    
+    return {
+        "temporary_care": {
+            "name": "一時預かり保育",
+            "slots": [
+                {
+                    "name": "通常",
+                    "start_hour": 9, "start_minute": 0,
+                    "end_hour": 17, "end_minute": 0,
+                    "rate_weekday": settings.get('temp_weekday_normal', 2000),
+                    "rate_holiday": settings.get('temp_holiday_normal', 3200),
+                },
+                {
+                    "name": "時間外（早朝）",
+                    "start_hour": 7, "start_minute": 0,
+                    "end_hour": 9, "end_minute": 0,
+                    "rate_weekday": settings.get('temp_weekday_overtime', 2800),
+                    "rate_holiday": settings.get('temp_holiday_overtime', 4000),
+                },
+                {
+                    "name": "時間外（夜間）",
+                    "start_hour": 17, "start_minute": 0,
+                    "end_hour": 22, "end_minute": 0,
+                    "rate_weekday": settings.get('temp_weekday_overtime', 2800),
+                    "rate_holiday": settings.get('temp_holiday_overtime', 4000),
+                },
+            ],
+            "facility_fee": settings.get('temp_facility_fee', 550),
+            "sibling_discount_per_hour": settings.get('temp_sibling_discount', 400),
+            "min_hours": None,
+        },
+        
+        "facility_sitter": {
+            "name": "ベビーシッター（施設型）",
+            "slots": [
+                {
+                    "name": "通常",
+                    "start_hour": 9, "start_minute": 0,
+                    "end_hour": 17, "end_minute": 0,
+                    "rate_weekday": settings.get('facility_weekday_normal', 3200),
+                    "rate_holiday": settings.get('facility_holiday_normal', 4000),
+                },
+                {
+                    "name": "時間外（早朝）",
+                    "start_hour": 7, "start_minute": 0,
+                    "end_hour": 9, "end_minute": 0,
+                    "rate_weekday": settings.get('facility_weekday_overtime', 4000),
+                    "rate_holiday": settings.get('facility_holiday_overtime', 4500),
+                },
+                {
+                    "name": "時間外（夜間）",
+                    "start_hour": 17, "start_minute": 0,
+                    "end_hour": 22, "end_minute": 0,
+                    "rate_weekday": settings.get('facility_weekday_overtime', 4000),
+                    "rate_holiday": settings.get('facility_holiday_overtime', 4500),
+                },
+            ],
+            "facility_fee": settings.get('facility_facility_fee', 2200),
+            "min_hours": 2,
+        },
+        
+        "home_sitter": {
+            "name": "自宅ベビーシッター",
+            "slots": [
+                {
+                    "name": "通常",
+                    "start_hour": 9, "start_minute": 0,
+                    "end_hour": 17, "end_minute": 0,
+                    "rate_weekday": settings.get('home_weekday_normal', 3500),
+                    "rate_holiday": settings.get('home_holiday_normal', 3900),
+                },
+                {
+                    "name": "時間外（早朝）",
+                    "start_hour": 7, "start_minute": 0,
+                    "end_hour": 9, "end_minute": 0,
+                    "rate_weekday": settings.get('home_weekday_overtime', 3800),
+                    "rate_holiday": settings.get('home_holiday_overtime', 4200),
+                },
+                {
+                    "name": "時間外（夕方）",
+                    "start_hour": 17, "start_minute": 0,
+                    "end_hour": 20, "end_minute": 0,
+                    "rate_weekday": settings.get('home_weekday_overtime', 3800),
+                    "rate_holiday": settings.get('home_holiday_overtime', 4200),
+                },
+                {
+                    "name": "早朝夜間（深夜前）",
+                    "start_hour": 0, "start_minute": 0,
+                    "end_hour": 7, "end_minute": 0,
+                    "rate_weekday": settings.get('home_weekday_night', 4000),
+                    "rate_holiday": settings.get('home_holiday_night', 4400),
+                },
+                {
+                    "name": "早朝夜間（夜間）",
+                    "start_hour": 20, "start_minute": 0,
+                    "end_hour": 24, "end_minute": 0,
+                    "rate_weekday": settings.get('home_weekday_night', 4000),
+                    "rate_holiday": settings.get('home_holiday_night', 4400),
+                },
+            ],
+            "sibling_addition_per_hour": settings.get('home_sibling_addition', 1000),
+            "housework_option_fee": settings.get('home_housework_fee', 1100),
+            "min_hours": 3,
+        },
+        
+        "common": {
+            "snack_price": settings.get('snack_price', 150),
+            "bento_price": settings.get('bento_price', 500),
+            "tebura_set_price": settings.get('tebura_set_price', 300),
+        },
+    }
+
 
 def determine_service_category(reservation_type: str) -> str:
     if "こぐまBaby" in reservation_type or "Baby" in reservation_type:

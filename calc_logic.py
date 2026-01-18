@@ -1,7 +1,7 @@
 """
 保育料金計算ロジック
 3つのサービス種別に対応した料金計算モジュール
-※料金設定はconfig.pyのFEE_CONFIGから読み込み
+※料金設定はデータベースから読み込み
 """
 
 from datetime import datetime, date, time, timedelta
@@ -9,7 +9,12 @@ from typing import Dict, List, Tuple
 from dataclasses import dataclass
 import jpholiday
 
-from config import FEE_CONFIG
+from database import get_fee_config_from_db
+
+
+def get_fee_config():
+    """データベースから料金設定を取得"""
+    return get_fee_config_from_db()
 
 
 @dataclass
@@ -51,8 +56,9 @@ class CalculationResult:
 
 
 def _build_slots_from_config(service_key: str) -> List[TimeSlot]:
-    """config.pyの設定からTimeSlotリストを生成"""
-    config = FEE_CONFIG[service_key]
+    """データベースの設定からTimeSlotリストを生成"""
+    fee_config = get_fee_config()
+    config = fee_config[service_key]
     slots = []
     for slot_data in config["slots"]:
         slots.append(TimeSlot(
@@ -80,45 +86,53 @@ def get_home_sitter_slots() -> List[TimeSlot]:
 
 
 def get_facility_fee_temporary() -> int:
-    return FEE_CONFIG["temporary_care"]["facility_fee"]
+    config = get_fee_config()
+    return config["temporary_care"]["facility_fee"]
 
 
 def get_facility_fee_sitter() -> int:
-    return FEE_CONFIG["facility_sitter"]["facility_fee"]
+    config = get_fee_config()
+    return config["facility_sitter"]["facility_fee"]
 
 
 def get_sibling_discount_per_hour() -> int:
-    return FEE_CONFIG["temporary_care"]["sibling_discount_per_hour"]
+    config = get_fee_config()
+    return config["temporary_care"]["sibling_discount_per_hour"]
 
 
 def get_sibling_addition_per_hour() -> int:
-    return FEE_CONFIG["home_sitter"]["sibling_addition_per_hour"]
+    config = get_fee_config()
+    return config["home_sitter"]["sibling_addition_per_hour"]
 
 
 def get_snack_price() -> int:
-    return FEE_CONFIG["common"]["snack_price"]
+    config = get_fee_config()
+    return config["common"]["snack_price"]
 
 
 def get_housework_option_fee() -> int:
-    return FEE_CONFIG["home_sitter"]["housework_option_fee"]
+    config = get_fee_config()
+    return config["home_sitter"]["housework_option_fee"]
 
 
 def get_min_hours_facility_sitter() -> int:
-    return FEE_CONFIG["facility_sitter"]["min_hours"]
+    config = get_fee_config()
+    return config["facility_sitter"]["min_hours"]
 
 
 def get_min_hours_home_sitter() -> int:
-    return FEE_CONFIG["home_sitter"]["min_hours"]
+    config = get_fee_config()
+    return config["home_sitter"]["min_hours"]
 
 
-FACILITY_FEE_TEMPORARY = get_facility_fee_temporary()
-FACILITY_FEE_SITTER = get_facility_fee_sitter()
-SIBLING_DISCOUNT_PER_HOUR = get_sibling_discount_per_hour()
-SIBLING_ADDITION_PER_HOUR = get_sibling_addition_per_hour()
-SNACK_PRICE = get_snack_price()
-HOUSEWORK_OPTION = get_housework_option_fee()
-MIN_HOURS_FACILITY_SITTER = get_min_hours_facility_sitter()
-MIN_HOURS_HOME_SITTER = get_min_hours_home_sitter()
+FACILITY_FEE_TEMPORARY = 550
+FACILITY_FEE_SITTER = 2200
+SIBLING_DISCOUNT_PER_HOUR = 400
+SIBLING_ADDITION_PER_HOUR = 1000
+SNACK_PRICE = 150
+HOUSEWORK_OPTION = 1100
+MIN_HOURS_FACILITY_SITTER = 2
+MIN_HOURS_HOME_SITTER = 3
 
 
 def is_holiday_or_weekend(check_date: date) -> bool:
@@ -229,7 +243,7 @@ def calculate_temporary_care(
     total = base_fee + facility_fee + sibling_adjustment + meal_fee
     
     return CalculationResult(
-        service_type=FEE_CONFIG["temporary_care"]["name"],
+        service_type="一時預かり保育",
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,
@@ -284,7 +298,7 @@ def calculate_facility_sitter(
     total = base_fee + facility_fee + meal_fee
     
     return CalculationResult(
-        service_type=FEE_CONFIG["facility_sitter"]["name"],
+        service_type="ベビーシッター（施設型）",
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,
@@ -345,7 +359,7 @@ def calculate_home_sitter(
     total = base_fee + sibling_adjustment + option_fee + transport_fee + meal_fee
     
     return CalculationResult(
-        service_type=FEE_CONFIG["home_sitter"]["name"],
+        service_type="自宅ベビーシッター",
         day_type=day_type,
         total_minutes=total_minutes,
         breakdown=breakdown,

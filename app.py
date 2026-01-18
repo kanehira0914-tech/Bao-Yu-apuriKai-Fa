@@ -12,7 +12,8 @@ from database import (
     add_staff, update_staff, delete_staff, get_staff_by_id,
     FACILITY_HOUSE, FACILITY_BABY, DEFAULT_FACILITY,
     authenticate_user, update_user_password, get_all_users, create_user,
-    update_user, delete_user, get_user_by_id
+    update_user, delete_user, get_user_by_id,
+    get_all_fee_settings, get_fee_settings_by_category, update_fee_setting
 )
 
 FACILITY_OPTIONS = {
@@ -2275,6 +2276,56 @@ def show_admin_dashboard():
                             st.rerun()
     else:
         st.info("ユーザーが登録されていません。")
+    
+    st.markdown("---")
+    st.markdown("### 💰 料金マスター管理")
+    
+    show_success_message("fee_update")
+    
+    fee_categories = [
+        ("temporary_care", "一時預かり保育"),
+        ("facility_sitter", "ベビーシッター（施設型）"),
+        ("home_sitter", "自宅ベビーシッター"),
+        ("option", "オプション料金"),
+    ]
+    
+    fee_tabs = st.tabs([cat[1] for cat in fee_categories])
+    
+    for idx, (category_key, category_name) in enumerate(fee_categories):
+        with fee_tabs[idx]:
+            fee_settings = get_fee_settings_by_category(category_key)
+            
+            if fee_settings:
+                with st.form(f"fee_form_{category_key}"):
+                    updated_values = {}
+                    
+                    for setting in fee_settings:
+                        col1, col2 = st.columns([3, 2])
+                        with col1:
+                            st.markdown(f"**{setting['description']}**")
+                        with col2:
+                            new_value = st.number_input(
+                                f"金額 ({setting['setting_key']})",
+                                min_value=0,
+                                value=setting['setting_value'],
+                                step=50,
+                                key=f"fee_{setting['setting_key']}",
+                                label_visibility="collapsed"
+                            )
+                            updated_values[setting['setting_key']] = new_value
+                    
+                    if st.form_submit_button(f"💾 {category_name}の料金を保存", type="primary", use_container_width=True):
+                        success_count = 0
+                        for key, value in updated_values.items():
+                            if update_fee_setting(key, value):
+                                success_count += 1
+                        if success_count == len(updated_values):
+                            set_success_message(f"✅ {category_name}の料金設定を更新しました", "fee_update")
+                            st.rerun()
+                        else:
+                            st.error("一部の料金設定の更新に失敗しました")
+            else:
+                st.info(f"{category_name}の料金設定がありません。")
 
 
 def show_settings():

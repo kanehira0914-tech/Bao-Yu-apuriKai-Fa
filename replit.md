@@ -183,6 +183,7 @@ streamlit run app.py --server.port 5000
 - ユーザーの追加・編集・削除が可能
 - 既存ユーザーのパスワードリセット機能
 - adminユーザーは削除不可
+- 料金マスター管理機能（基本料金・オプション・割引設定）
 
 ### データベーステーブル
 - `users`: ユーザー情報（id, username, password_hash, salt, role, display_name）
