@@ -608,7 +608,7 @@ def navigate_to(page_name: str):
     st.session_state.current_page = page_name
 
 def show_facility_selector():
-    """ヘッダーに施設切替セレクターを表示"""
+    """ヘッダーに施設切替セレクターとログアウトボタンを表示"""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         facility_options = list(FACILITY_OPTIONS.keys())
@@ -626,6 +626,10 @@ def show_facility_selector():
         selected_facility = facility_options[facility_labels.index(selected_label)]
         if selected_facility != st.session_state.current_facility:
             st.session_state.current_facility = selected_facility
+            st.rerun()
+    with col3:
+        if st.button("🚪 ログアウト", key="logout_header"):
+            logout()
             st.rerun()
 
 
@@ -670,14 +674,7 @@ def main():
     facility_name = get_facility_display_name(get_current_facility())
     st.sidebar.markdown(f"## {facility_name}")
     role_display = "👑 管理者" if user_is_admin else "👤 スタッフ"
-    
-    col_user, col_logout = st.sidebar.columns([3, 1])
-    with col_user:
-        st.markdown(f"{role_display}: {current_user.get('display_name', current_user.get('username'))}")
-    with col_logout:
-        if st.button("🚪", key="logout_top", help="ログアウト"):
-            logout()
-            st.rerun()
+    st.sidebar.markdown(f"{role_display}: {current_user.get('display_name', current_user.get('username'))}")
     st.sidebar.markdown("---")
     
     if st.sidebar.button("🏠 ホーム", use_container_width=True):
