@@ -2,6 +2,8 @@ import sqlite3
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 import json
+import hashlib
+import secrets
 
 DATABASE_PATH = "nursery.db"
 
@@ -167,10 +169,147 @@ def init_database():
         )
     ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            display_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+    if cursor.fetchone()[0] == 0:
+        salt = secrets.token_hex(16)
+        password_hash = hash_password('admin123', salt)
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, salt, role, display_name) VALUES (?, ?, ?, ?, ?)",
+            ('admin', password_hash, salt, 'admin', '管理者')
+        )
+    
     conn.commit()
     conn.close()
     
     migrate_database()
+
+
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.sha256((password + salt).encode()).hexdigest()
+
+
+def verify_password(password: str, password_hash: str, salt: str) -> bool:
+    return hash_password(password, salt) == password_hash
+
+
+def authenticate_user(username: str, password: str) -> Optional[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        user = dict(row)
+        if verify_password(password, user['password_hash'], user['salt']):
+            return {
+                'id': user['id'],
+                'username': user['username'],
+                'role': user['role'],
+                'display_name': user['display_name']
+            }
+    return None
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, role, display_name, created_at FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_all_users() -> List[Dict]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, role, display_name, created_at FROM users ORDER BY created_at")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def create_user(username: str, password: str, role: str = 'user', display_name: str = None) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        salt = secrets.token_hex(16)
+        password_hash = hash_password(password, salt)
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, salt, role, display_name) VALUES (?, ?, ?, ?, ?)",
+            (username, password_hash, salt, role, display_name or username)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def update_user_password(user_id: int, new_password: str) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        salt = secrets.token_hex(16)
+        password_hash = hash_password(new_password, salt)
+        cursor.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, updated_at = ? WHERE id = ?",
+            (password_hash, salt, datetime.now().isoformat(), user_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+
+def update_user(user_id: int, display_name: str = None, role: str = None) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        updates = []
+        params = []
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+        if role is not None:
+            updates.append("role = ?")
+            params.append(role)
+        updates.append("updated_at = ?")
+        params.append(datetime.now().isoformat())
+        params.append(user_id)
+        
+        cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
+
+
+def delete_user(user_id: int) -> bool:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users WHERE id = ? AND username != 'admin'", (user_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        return False
 
 def determine_service_category(reservation_type: str) -> str:
     if "こぐまBaby" in reservation_type or "Baby" in reservation_type:
