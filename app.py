@@ -10,7 +10,9 @@ from database import (
     get_reservations_by_month, get_reservations_by_date_range,
     save_nap_check_log, get_nap_check_logs, delete_nap_check_logs,
     add_staff, update_staff, delete_staff, get_staff_by_id,
-    FACILITY_HOUSE, FACILITY_BABY, DEFAULT_FACILITY
+    FACILITY_HOUSE, FACILITY_BABY, DEFAULT_FACILITY,
+    authenticate_user, update_user_password, get_all_users, create_user,
+    update_user, delete_user, get_user_by_id
 )
 
 FACILITY_OPTIONS = {
@@ -46,6 +48,29 @@ if 'success_message_key' not in st.session_state:
     st.session_state.success_message_key = None
 if 'current_facility' not in st.session_state:
     st.session_state.current_facility = DEFAULT_FACILITY
+if 'logged_in_user' not in st.session_state:
+    st.session_state.logged_in_user = None
+
+
+def is_logged_in() -> bool:
+    return st.session_state.logged_in_user is not None
+
+
+def get_current_user() -> dict:
+    return st.session_state.logged_in_user
+
+
+def is_admin() -> bool:
+    user = get_current_user()
+    return user is not None and user.get('role') == 'admin'
+
+
+def login(user: dict):
+    st.session_state.logged_in_user = user
+
+
+def logout():
+    st.session_state.logged_in_user = None
 
 
 def get_current_facility() -> str:
@@ -603,11 +628,45 @@ def show_facility_selector():
             st.rerun()
 
 
+def show_login_page():
+    st.markdown('<div class="main-header">🐻 こぐまハウス</div>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align:center;color:#8B7355;margin-bottom:2rem;">業務支援システム</p>', unsafe_allow_html=True)
+    
+    st.markdown("### 🔐 ログイン")
+    
+    with st.form("login_form"):
+        username = st.text_input("ユーザーID", placeholder="ユーザーIDを入力")
+        password = st.text_input("パスワード", type="password", placeholder="パスワードを入力")
+        submitted = st.form_submit_button("ログイン", type="primary", use_container_width=True)
+        
+        if submitted:
+            if username and password:
+                user = authenticate_user(username, password)
+                if user:
+                    login(user)
+                    st.rerun()
+                else:
+                    st.error("ユーザーIDまたはパスワードが正しくありません")
+            else:
+                st.warning("ユーザーIDとパスワードを入力してください")
+    
+    st.markdown("---")
+    st.markdown('<p style="text-align:center;color:#999;font-size:0.8rem;">初回ログイン: admin / admin123</p>', unsafe_allow_html=True)
+
+
 def main():
+    init_database()
+    
+    if not is_logged_in():
+        show_login_page()
+        return
+    
     show_facility_selector()
     
+    current_user = get_current_user()
     facility_name = get_facility_display_name(get_current_facility())
     st.sidebar.markdown(f"## {facility_name}")
+    st.sidebar.markdown(f"👤 {current_user.get('display_name', current_user.get('username'))}")
     st.sidebar.markdown("---")
     
     if st.sidebar.button("🏠 ホーム", use_container_width=True):
@@ -635,6 +694,11 @@ def main():
     st.sidebar.markdown("---")
     if st.sidebar.button("⚙️ 設定", use_container_width=True):
         navigate_to("settings")
+        st.rerun()
+    
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 ログアウト", use_container_width=True):
+        logout()
         st.rerun()
     
     page = st.session_state.current_page
@@ -2031,6 +2095,148 @@ def show_settings():
     if st.button("← ホームに戻る", use_container_width=False):
         navigate_to("home")
         st.rerun()
+    
+    current_user = get_current_user()
+    
+    st.markdown("---")
+    st.markdown("### 🔑 パスワード変更")
+    
+    show_success_message("password_change")
+    
+    with st.form("password_change_form"):
+        new_password = st.text_input("新しいパスワード", type="password", placeholder="新しいパスワードを入力")
+        confirm_password = st.text_input("パスワード確認", type="password", placeholder="もう一度入力")
+        pw_submitted = st.form_submit_button("パスワードを変更", use_container_width=True)
+        
+        if pw_submitted:
+            if not new_password:
+                st.error("新しいパスワードを入力してください")
+            elif len(new_password) < 4:
+                st.error("パスワードは4文字以上で設定してください")
+            elif new_password != confirm_password:
+                st.error("パスワードが一致しません")
+            else:
+                if update_user_password(current_user['id'], new_password):
+                    set_success_message("✅ パスワードを変更しました", "password_change")
+                    st.rerun()
+                else:
+                    st.error("パスワードの変更に失敗しました")
+    
+    if is_admin():
+        st.markdown("---")
+        st.markdown("### 👤 ユーザー管理")
+        
+        show_success_message("user_add")
+        show_success_message("user_update")
+        show_success_message("user_delete")
+        
+        if 'show_add_user_form' not in st.session_state:
+            st.session_state.show_add_user_form = False
+        if 'editing_user_id' not in st.session_state:
+            st.session_state.editing_user_id = None
+        
+        col_add_user, col_spacer_user = st.columns([1, 3])
+        with col_add_user:
+            if st.button("➕ 新規ユーザー追加", type="primary", use_container_width=True, key="add_user_btn"):
+                st.session_state.show_add_user_form = True
+                st.session_state.editing_user_id = None
+        
+        if st.session_state.show_add_user_form:
+            st.markdown("#### 新規ユーザー登録")
+            with st.form("add_user_form"):
+                new_username = st.text_input("ユーザーID *", placeholder="例: staff01")
+                new_display_name = st.text_input("表示名", placeholder="例: 山田太郎")
+                new_user_password = st.text_input("初期パスワード *", type="password", placeholder="4文字以上")
+                new_role = st.selectbox("権限", ["一般スタッフ", "管理者"])
+                new_role_value = "admin" if new_role == "管理者" else "user"
+                
+                col_u_submit, col_u_cancel = st.columns(2)
+                with col_u_submit:
+                    u_submitted = st.form_submit_button("✅ 登録", type="primary", use_container_width=True)
+                with col_u_cancel:
+                    u_cancelled = st.form_submit_button("❌ キャンセル", use_container_width=True)
+                
+                if u_submitted:
+                    if not new_username.strip():
+                        st.error("ユーザーIDを入力してください")
+                    elif len(new_user_password) < 4:
+                        st.error("パスワードは4文字以上で設定してください")
+                    else:
+                        if create_user(new_username.strip(), new_user_password, new_role_value, new_display_name.strip() or new_username.strip()):
+                            st.session_state.show_add_user_form = False
+                            set_success_message(f"✅ ユーザー「{new_username}」を登録しました", "user_add")
+                            st.rerun()
+                        else:
+                            st.error("ユーザーIDが既に使用されています")
+                
+                if u_cancelled:
+                    st.session_state.show_add_user_form = False
+                    st.rerun()
+            st.markdown("---")
+        
+        users = get_all_users()
+        if users:
+            st.markdown(f"**登録済みユーザー: {len(users)}名**")
+            
+            for user in users:
+                user_id = user['id']
+                is_editing_user = st.session_state.editing_user_id == user_id
+                role_display = "👑 管理者" if user['role'] == 'admin' else "👤 スタッフ"
+                
+                with st.container():
+                    if is_editing_user:
+                        st.markdown(f"#### ✏️ 編集中: {user['username']}")
+                        with st.form(f"edit_user_form_{user_id}"):
+                            edit_display_name = st.text_input("表示名", value=user.get('display_name', '') or '')
+                            edit_role = st.selectbox("権限", ["一般スタッフ", "管理者"], 
+                                                     index=1 if user['role'] == 'admin' else 0)
+                            edit_role_value = "admin" if edit_role == "管理者" else "user"
+                            
+                            col1_u, col2_u, col3_u = st.columns(3)
+                            with col1_u:
+                                save_u_btn = st.form_submit_button("💾 保存", type="primary", use_container_width=True)
+                            with col2_u:
+                                cancel_u_btn = st.form_submit_button("❌ キャンセル", use_container_width=True)
+                            with col3_u:
+                                if user['username'] != 'admin':
+                                    delete_u_btn = st.form_submit_button("🗑️ 削除", use_container_width=True)
+                                else:
+                                    delete_u_btn = False
+                            
+                            if save_u_btn:
+                                update_user(user_id, edit_display_name.strip(), edit_role_value)
+                                st.session_state.editing_user_id = None
+                                set_success_message(f"✅ ユーザー「{user['username']}」を更新しました", "user_update")
+                                st.rerun()
+                            
+                            if cancel_u_btn:
+                                st.session_state.editing_user_id = None
+                                st.rerun()
+                            
+                            if delete_u_btn:
+                                delete_user(user_id)
+                                st.session_state.editing_user_id = None
+                                set_success_message(f"🗑️ ユーザー「{user['username']}」を削除しました", "user_delete")
+                                st.rerun()
+                    else:
+                        st.markdown(f"""
+                        <div style="background:#f0f8ff;padding:12px;border-radius:8px;margin-bottom:8px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+                                <div>
+                                    <strong style="font-size:1.1rem;">{user['username']}</strong>
+                                    <span style="color:#888;margin-left:8px;">({user.get('display_name', '') or '-'})</span>
+                                    <span style="background:#e8f5e9;color:#388e3c;padding:2px 8px;border-radius:4px;font-size:0.75rem;margin-left:8px;">{role_display}</span>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if st.button("✏️ 編集", key=f"edit_user_{user_id}", use_container_width=False):
+                            st.session_state.editing_user_id = user_id
+                            st.session_state.show_add_user_form = False
+                            st.rerun()
+        else:
+            st.info("ユーザーが登録されていません。")
     
     st.markdown("---")
     st.markdown("### 👥 スタッフ管理")
