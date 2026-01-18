@@ -609,30 +609,30 @@ def navigate_to(page_name: str):
 
 def show_facility_selector():
     """ヘッダーに施設切替セレクターとログアウトボタンを表示"""
-    col1, col2, col3 = st.columns([1, 3, 1])
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        sub_col1, sub_col2 = st.columns([3, 1])
-        with sub_col1:
-            facility_options = list(FACILITY_OPTIONS.keys())
-            facility_labels = list(FACILITY_OPTIONS.values())
-            current_idx = facility_options.index(get_current_facility()) if get_current_facility() in facility_options else 0
-            
-            selected_label = st.selectbox(
-                "施設選択",
-                facility_labels,
-                index=current_idx,
-                key="facility_selector",
-                label_visibility="collapsed"
-            )
-            
-            selected_facility = facility_options[facility_labels.index(selected_label)]
-            if selected_facility != st.session_state.current_facility:
-                st.session_state.current_facility = selected_facility
-                st.rerun()
-        with sub_col2:
-            if st.button("🚪", key="logout_header", help="ログアウト", use_container_width=True):
-                logout()
-                st.rerun()
+        facility_options = list(FACILITY_OPTIONS.keys())
+        facility_labels = list(FACILITY_OPTIONS.values())
+        current_idx = facility_options.index(get_current_facility()) if get_current_facility() in facility_options else 0
+        
+        selected_label = st.selectbox(
+            "施設選択",
+            facility_labels,
+            index=current_idx,
+            key="facility_selector",
+            label_visibility="collapsed"
+        )
+        
+        selected_facility = facility_options[facility_labels.index(selected_label)]
+        if selected_facility != st.session_state.current_facility:
+            st.session_state.current_facility = selected_facility
+            st.rerun()
+    
+    logout_col1, logout_col2, logout_col3 = st.columns([2, 1, 2])
+    with logout_col2:
+        if st.button("🚪 ログアウト", key="logout_header", use_container_width=True):
+            logout()
+            st.rerun()
 
 
 def show_login_page():
