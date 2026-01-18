@@ -608,7 +608,20 @@ def navigate_to(page_name: str):
     st.session_state.current_page = page_name
 
 def show_facility_selector():
-    """ヘッダーに施設切替セレクターとログアウトボタンを表示"""
+    """ヘッダーに施設切替セレクターとユーザー情報を表示"""
+    current_user = get_current_user()
+    user_is_admin = is_admin()
+    role_text = "👑 管理者" if user_is_admin else "👤 スタッフ"
+    user_display = current_user.get('display_name', current_user.get('username', ''))
+    
+    st.markdown(f"""
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#f8f9fa;border-radius:8px;margin-bottom:16px;">
+        <div style="font-size:0.9rem;color:#555;">
+            {role_text}: <strong>{user_display}</strong>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         facility_options = list(FACILITY_OPTIONS.keys())
@@ -627,9 +640,7 @@ def show_facility_selector():
         if selected_facility != st.session_state.current_facility:
             st.session_state.current_facility = selected_facility
             st.rerun()
-    
-    logout_col1, logout_col2, logout_col3 = st.columns([2, 1, 2])
-    with logout_col2:
+    with col3:
         if st.button("🚪 ログアウト", key="logout_header", use_container_width=True):
             logout()
             st.rerun()
