@@ -664,8 +664,7 @@ def main():
     current_user = get_current_user()
     user_is_admin = is_admin()
     
-    if user_is_admin:
-        show_facility_selector()
+    show_facility_selector()
     
     facility_name = get_facility_display_name(get_current_facility())
     st.sidebar.markdown(f"## {facility_name}")
@@ -673,43 +672,36 @@ def main():
     st.sidebar.markdown(f"{role_display}: {current_user.get('display_name', current_user.get('username'))}")
     st.sidebar.markdown("---")
     
+    if st.sidebar.button("🏠 ホーム", use_container_width=True):
+        navigate_to("home")
+        st.rerun()
+    if st.sidebar.button("📁 データ取込", use_container_width=True):
+        navigate_to("import")
+        st.rerun()
+    if st.sidebar.button("👶 本日の児童", use_container_width=True):
+        navigate_to("today")
+        st.rerun()
+    if st.sidebar.button("📋 予約一覧", use_container_width=True):
+        navigate_to("reservations")
+        st.rerun()
+    if st.sidebar.button("📝 実績入力", use_container_width=True):
+        navigate_to("record")
+        st.rerun()
+    if st.sidebar.button("🧾 領収書発行", use_container_width=True):
+        navigate_to("receipt")
+        st.rerun()
+    if st.sidebar.button("🧮 料金計算", use_container_width=True):
+        navigate_to("fee_calc")
+        st.rerun()
+    
+    st.sidebar.markdown("---")
     if user_is_admin:
-        if st.sidebar.button("🏠 ホーム", use_container_width=True):
-            navigate_to("home")
-            st.rerun()
-        if st.sidebar.button("📁 データ取込", use_container_width=True):
-            navigate_to("import")
-            st.rerun()
-        if st.sidebar.button("👶 本日の児童", use_container_width=True):
-            navigate_to("today")
-            st.rerun()
-        if st.sidebar.button("📋 予約一覧", use_container_width=True):
-            navigate_to("reservations")
-            st.rerun()
-        if st.sidebar.button("📝 実績入力", use_container_width=True):
-            navigate_to("record")
-            st.rerun()
-        if st.sidebar.button("🧾 領収書発行", use_container_width=True):
-            navigate_to("receipt")
-            st.rerun()
-        if st.sidebar.button("🧮 料金計算", use_container_width=True):
-            navigate_to("fee_calc")
-            st.rerun()
-        
-        st.sidebar.markdown("---")
         if st.sidebar.button("🔧 管理者ダッシュボード", use_container_width=True):
             navigate_to("admin")
             st.rerun()
-        if st.sidebar.button("⚙️ 設定", use_container_width=True):
-            navigate_to("settings")
-            st.rerun()
-    else:
-        if st.sidebar.button("🧾 領収書発行", use_container_width=True):
-            navigate_to("receipt")
-            st.rerun()
-        if st.sidebar.button("⚙️ 設定", use_container_width=True):
-            navigate_to("settings")
-            st.rerun()
+    if st.sidebar.button("⚙️ 設定", use_container_width=True):
+        navigate_to("settings")
+        st.rerun()
     
     st.sidebar.markdown("---")
     if st.sidebar.button("🚪 ログアウト", use_container_width=True):
@@ -718,9 +710,9 @@ def main():
     
     page = st.session_state.current_page
     
-    if not user_is_admin and page not in ["receipt", "settings"]:
-        page = "receipt"
-        st.session_state.current_page = "receipt"
+    if not user_is_admin and page == "admin":
+        page = "home"
+        st.session_state.current_page = "home"
     
     if page == "home":
         show_home()
@@ -2288,12 +2280,9 @@ def show_admin_dashboard():
 def show_settings():
     st.markdown('<div class="main-header">⚙️ 設定</div>', unsafe_allow_html=True)
     
-    user_is_admin = is_admin()
-    
-    if user_is_admin:
-        if st.button("← ホームに戻る", use_container_width=False):
-            navigate_to("home")
-            st.rerun()
+    if st.button("← ホームに戻る", use_container_width=False):
+        navigate_to("home")
+        st.rerun()
     
     current_user = get_current_user()
     
@@ -2320,11 +2309,6 @@ def show_settings():
                     st.rerun()
                 else:
                     st.error("パスワードの変更に失敗しました")
-    
-    if not user_is_admin:
-        st.markdown("---")
-        st.info("💡 他の機能を利用するには管理者にお問い合わせください。")
-        return
     
     st.markdown("---")
     st.markdown("### 👥 スタッフ管理")
