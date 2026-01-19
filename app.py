@@ -433,11 +433,25 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
                     time_parts = parts[0].split(':')
                     if len(time_parts) == 2:
                         from datetime import time as dt_time
-                        care_data['milk_time'] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                        care_data['milk_time_1'] = dt_time(int(time_parts[0]), int(time_parts[1]))
                     ml_str = parts[1].replace('ml', '').strip()
-                    care_data['milk_amount'] = int(ml_str)
+                    care_data['milk_amount_1'] = int(ml_str)
                 except:
                     pass
+        
+        elif record_type.startswith('milk_'):
+            try:
+                idx = int(record_type.split('_')[1])
+                parts = details.split(' ', 1)
+                if len(parts) >= 2:
+                    time_parts = parts[0].split(':')
+                    if len(time_parts) == 2:
+                        from datetime import time as dt_time
+                        care_data[f'milk_time_{idx}'] = dt_time(int(time_parts[0]), int(time_parts[1]))
+                    ml_str = parts[1].replace('ml', '').strip()
+                    care_data[f'milk_amount_{idx}'] = int(ml_str)
+            except:
+                pass
         
         elif record_type.startswith('stool_'):
             try:
@@ -1360,23 +1374,24 @@ def show_care_tab(res: dict):
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    st.markdown("**🍼 ミルク**")
+    st.markdown("**🍼 ミルク（3回分）**")
     show_success_message("milk")
-    milk_time_default = care_data.get('milk_time', None)
-    milk_amount_default = care_data.get('milk_amount', 100)
-    col1, col2 = st.columns(2)
-    with col1:
-        milk_time = st.time_input("時刻", value=milk_time_default, key=f"milk_time_{rid}")
-    with col2:
-        milk_amount = st.number_input("ミルク量（ml）", min_value=0, max_value=500, value=milk_amount_default, step=10, key=f"milk_amount_{rid}")
-    
-    if st.button("🍼 ミルクを記録", key=f"save_milk_{rid}", use_container_width=True):
-        if milk_time:
-            add_care_record(rid, 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml")
-            set_success_message("✅ ミルクを記録しました", "milk")
-            if db_key in st.session_state:
-                del st.session_state[db_key]
-            st.rerun()
+    for i in range(1, 4):
+        milk_time_default = care_data.get(f'milk_time_{i}', None)
+        milk_amount_default = care_data.get(f'milk_amount_{i}', 100)
+        col1, col2 = st.columns(2)
+        with col1:
+            milk_time = st.time_input(f"時刻{i}", value=milk_time_default, key=f"milk_time_{rid}_{i}")
+        with col2:
+            milk_amount = st.number_input(f"ミルク量{i}（ml）", min_value=0, max_value=500, value=milk_amount_default, step=10, key=f"milk_amount_{rid}_{i}")
+        
+        if st.button(f"🍼 ミルク{i}を記録", key=f"save_milk_{rid}_{i}", use_container_width=True):
+            if milk_time:
+                add_care_record(rid, 'milk', f"{milk_time.strftime('%H:%M')} {milk_amount}ml", index=i)
+                set_success_message(f"✅ ミルク{i}を記録しました", "milk")
+                if db_key in st.session_state:
+                    del st.session_state[db_key]
+                st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
@@ -1503,7 +1518,7 @@ def show_care_tab(res: dict):
                     display = f"{record_type} {parts[0]} {parts[1]}"
                 else:
                     display = f"{record_type} {details}"
-            elif record_type_raw == 'milk':
+            elif record_type_raw == 'milk' or record_type_raw.startswith('milk_'):
                 parts = details.split(' ', 1)
                 if len(parts) == 2:
                     display = f"{record_type} {parts[0]} {parts[1]}"

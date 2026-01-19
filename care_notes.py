@@ -9,6 +9,9 @@ RECORD_TYPES = {
     "snack": "おやつ",
     "dinner": "夕食",
     "milk": "ミルク",
+    "milk_1": "ミルク①",
+    "milk_2": "ミルク②",
+    "milk_3": "ミルク③",
     "stool": "排便",
     "stool_1": "排便①",
     "stool_2": "排便②",
@@ -56,7 +59,7 @@ def generate_care_summary(care_records: List[Dict], child_name: str) -> str:
             meals.append(details)
         elif record_type == 'snack':
             meals.append(details)
-        elif record_type == 'milk':
+        elif record_type == 'milk' or record_type.startswith('milk_'):
             milks.append(details)
         elif record_type.startswith('stool'):
             stools.append(details)
