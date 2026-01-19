@@ -202,6 +202,17 @@ def init_database():
         )
     ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            session_token TEXT UNIQUE NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    
     cursor.execute("SELECT COUNT(*) FROM fee_settings")
     if cursor.fetchone()[0] == 0:
         default_fees = [
@@ -276,6 +287,84 @@ def get_user_by_id(user_id: int) -> Optional[Dict]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+SESSION_EXPIRY_DAYS = 30
+
+def create_session(user_id: int) -> str:
+    """ユーザーのセッショントークンを作成（30日有効）"""
+    from datetime import timedelta
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    session_token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)).isoformat()
+    
+    cursor.execute(
+        "INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)",
+        (user_id, session_token, expires_at)
+    )
+    conn.commit()
+    conn.close()
+    return session_token
+
+
+def validate_session(session_token: str) -> Optional[Dict]:
+    """セッショントークンを検証し、有効ならユーザー情報を返す"""
+    if not session_token:
+        return None
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.username, u.role, u.display_name, s.expires_at
+        FROM user_sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.session_token = ?
+    """, (session_token,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        user_data = dict(row)
+        expires_at = datetime.fromisoformat(user_data['expires_at'])
+        if expires_at > datetime.now():
+            return {
+                'id': user_data['id'],
+                'username': user_data['username'],
+                'role': user_data['role'],
+                'display_name': user_data['display_name']
+            }
+        else:
+            delete_session(session_token)
+    return None
+
+
+def delete_session(session_token: str):
+    """セッションを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_sessions WHERE session_token = ?", (session_token,))
+    conn.commit()
+    conn.close()
+
+
+def delete_user_sessions(user_id: int):
+    """ユーザーの全セッションを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def cleanup_expired_sessions():
+    """期限切れセッションを削除"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_sessions WHERE expires_at < ?", (datetime.now().isoformat(),))
+    conn.commit()
+    conn.close()
 
 
 def get_all_users() -> List[Dict]:

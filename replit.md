@@ -110,6 +110,9 @@ streamlit run app.py --server.port 5000
 - `care_records`: ケア記録（record_typeに`temperature_1`、`stool_2`のようにインデックス付き）
 - `staff`: スタッフ情報（要件証明用）
 - `nap_check_logs`: 午睡チェック詳細ログ（5分刻み記録）
+- `users`: ユーザー情報（id, username, password_hash, salt, role, display_name）
+- `user_sessions`: 永続ログインセッション（user_id, session_token, expires_at）
+- `fee_settings`: 料金マスター設定
 
 ## 午睡チェック機能（監査対応）
 お昼寝記録に「詳細」ボタンを追加。入眠〜起床時間を5分刻みで詳細記録可能。
@@ -163,7 +166,13 @@ streamlit run app.py --server.port 5000
 ### ログイン
 - ログインしていないユーザーは全画面にアクセス不可
 - ユーザーIDとパスワードで認証
-- セッションベースの認証管理
+- **永続セッション管理**（Cookie + データベース）
+
+### セッション管理
+- **有効期限**: 30日間（ログアウトボタンを押さない限り維持）
+- **保存方式**: ブラウザCookie + データベース（user_sessionsテーブル）
+- **ログアウト**: 明示的にログアウトボタンを押すとセッション削除
+- **自動クリーンアップ**: 期限切れセッションは起動時に自動削除
 
 ### 権限（ロール）
 - **管理者（admin）**: 全機能＋管理者ダッシュボードにアクセス可能

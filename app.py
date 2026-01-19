@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import os
+import extra_streamlit_components as stx
 
 from database import (
     init_database, import_csv_data, get_reservations_by_date,
@@ -13,7 +14,8 @@ from database import (
     FACILITY_HOUSE, FACILITY_BABY, DEFAULT_FACILITY,
     authenticate_user, update_user_password, get_all_users, create_user,
     update_user, delete_user, get_user_by_id,
-    get_all_fee_settings, get_fee_settings_by_category, update_fee_setting
+    get_all_fee_settings, get_fee_settings_by_category, update_fee_setting,
+    create_session, validate_session, delete_session, cleanup_expired_sessions
 )
 
 FACILITY_OPTIONS = {
@@ -51,6 +53,31 @@ if 'current_facility' not in st.session_state:
     st.session_state.current_facility = DEFAULT_FACILITY
 if 'logged_in_user' not in st.session_state:
     st.session_state.logged_in_user = None
+if 'session_checked' not in st.session_state:
+    st.session_state.session_checked = False
+
+COOKIE_NAME = "koguma_session"
+SESSION_EXPIRY_DAYS = 30
+
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+
+def restore_session_from_cookie():
+    """Cookieからセッションを復元"""
+    if st.session_state.session_checked:
+        return
+    
+    st.session_state.session_checked = True
+    
+    cookie_manager = get_cookie_manager()
+    session_token = cookie_manager.get(COOKIE_NAME)
+    
+    if session_token and not st.session_state.logged_in_user:
+        user = validate_session(session_token)
+        if user:
+            st.session_state.logged_in_user = user
 
 
 def is_logged_in() -> bool:
@@ -67,11 +94,30 @@ def is_admin() -> bool:
 
 
 def login(user: dict):
+    """ログイン処理（Cookieにセッショントークンを保存）"""
     st.session_state.logged_in_user = user
+    
+    session_token = create_session(user['id'])
+    
+    cookie_manager = get_cookie_manager()
+    cookie_manager.set(
+        COOKIE_NAME, 
+        session_token,
+        expires_at=datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
+    )
 
 
 def logout():
+    """ログアウト処理（Cookieを削除）"""
+    cookie_manager = get_cookie_manager()
+    session_token = cookie_manager.get(COOKIE_NAME)
+    
+    if session_token:
+        delete_session(session_token)
+        cookie_manager.delete(COOKIE_NAME)
+    
     st.session_state.logged_in_user = None
+    st.session_state.session_checked = False
 
 
 def get_current_facility() -> str:
@@ -655,6 +701,9 @@ def show_login_page():
 
 def main():
     init_database()
+    cleanup_expired_sessions()
+    
+    restore_session_from_cookie()
     
     if not is_logged_in():
         show_login_page()
