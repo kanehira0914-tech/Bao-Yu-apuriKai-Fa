@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import os
+import time
 import extra_streamlit_components as stx
 
 from database import (
@@ -66,29 +67,35 @@ def get_cookie_manager():
     return st.session_state.cookie_manager
 
 
+COOKIE_RETRY_COUNT = 3
+COOKIE_RETRY_DELAY = 0.3
+
+def get_cookie_with_retry(cookie_manager, max_retries: int = COOKIE_RETRY_COUNT):
+    """Cookie取得をリトライ付きで実行（iOS Safari競合状態対策）"""
+    for attempt in range(max_retries):
+        try:
+            session_token = cookie_manager.get(COOKIE_NAME)
+            if session_token:
+                return session_token
+            if attempt < max_retries - 1:
+                time.sleep(COOKIE_RETRY_DELAY)
+        except Exception as e:
+            log_session_event("COOKIE_READ_ERROR", details=f"Cookie読み取りエラー (試行{attempt+1}): {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(COOKIE_RETRY_DELAY)
+    return None
+
+
 def restore_session_from_cookie():
-    """Cookieからセッションを復元（iOS Safari対応強化版）"""
+    """Cookieからセッションを復元（iOS Safari対応強化版・リトライ機能付き）"""
     if st.session_state.get('_session_restore_done'):
         return
     
-    cookie_manager = get_cookie_manager()
-    
-    try:
-        session_token = cookie_manager.get(COOKIE_NAME)
-    except Exception as e:
-        log_session_event("COOKIE_READ_ERROR", details=f"Cookie読み取りエラー: {str(e)}")
-        session_token = None
-    
     if st.session_state.logged_in_user:
-        if not session_token and not st.session_state.get('_mismatch_logged'):
-            log_session_event(
-                "SESSION_STATE_MISMATCH",
-                user_id=st.session_state.logged_in_user.get('id'),
-                username=st.session_state.logged_in_user.get('username'),
-                details="session_stateにユーザーあるがCookieなし（iOS特有の問題の可能性）"
-            )
-            st.session_state._mismatch_logged = True
         return
+    
+    cookie_manager = get_cookie_manager()
+    session_token = get_cookie_with_retry(cookie_manager)
     
     st.session_state._session_restore_done = True
     
@@ -112,7 +119,7 @@ def restore_session_from_cookie():
             )
     else:
         if not st.session_state.get('_no_cookie_logged'):
-            log_session_event("NO_COOKIE", details="Cookieが存在しない（初回アクセスまたは削除済み）")
+            log_session_event("NO_COOKIE", details=f"Cookie取得失敗（{COOKIE_RETRY_COUNT}回リトライ後）")
             st.session_state._no_cookie_logged = True
 
 

@@ -4,6 +4,13 @@ from typing import Optional, List, Dict, Any
 import json
 import hashlib
 import secrets
+import pytz
+
+JST = pytz.timezone('Asia/Tokyo')
+
+def get_jst_now() -> datetime:
+    """日本時間（JST）の現在日時を取得"""
+    return datetime.now(JST)
 
 DATABASE_PATH = "nursery.db"
 
@@ -415,16 +422,17 @@ def cleanup_expired_sessions():
 
 def log_session_event(event_type: str, user_id: int = None, username: str = None, 
                       session_token: str = None, details: str = None, user_agent: str = None):
-    """セッションイベントをログに記録（デバッグ用）"""
+    """セッションイベントをログに記録（デバッグ用）- JST時刻で保存"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         token_prefix = session_token[:8] + "..." if session_token and len(session_token) > 8 else session_token
+        jst_now = get_jst_now().strftime('%Y-%m-%d %H:%M:%S')
         cursor.execute(
             """INSERT INTO session_logs 
-               (event_type, user_id, username, session_token_prefix, details, user_agent) 
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (event_type, user_id, username, token_prefix, details, user_agent)
+               (event_type, user_id, username, session_token_prefix, details, user_agent, created_at) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (event_type, user_id, username, token_prefix, details, user_agent, jst_now)
         )
         conn.commit()
         conn.close()
