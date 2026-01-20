@@ -62,40 +62,22 @@ COOKIE_NAME = "koguma_session"
 SESSION_EXPIRY_DAYS = 30
 
 def get_cookie_manager():
-    if 'cookie_manager' not in st.session_state:
-        st.session_state.cookie_manager = stx.CookieManager()
-    return st.session_state.cookie_manager
-
-
-COOKIE_RETRY_COUNT = 3
-COOKIE_RETRY_DELAY = 0.3
-
-def get_cookie_with_retry(cookie_manager, max_retries: int = COOKIE_RETRY_COUNT):
-    """Cookie取得をリトライ付きで実行（iOS Safari競合状態対策）"""
-    for attempt in range(max_retries):
-        try:
-            session_token = cookie_manager.get(COOKIE_NAME)
-            if session_token:
-                return session_token
-            if attempt < max_retries - 1:
-                time.sleep(COOKIE_RETRY_DELAY)
-        except Exception as e:
-            log_session_event("COOKIE_READ_ERROR", details=f"Cookie読み取りエラー (試行{attempt+1}): {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(COOKIE_RETRY_DELAY)
-    return None
+    """CookieManagerを取得（セッション全体で同一インスタンスを使用）"""
+    if '_cookie_manager_instance' not in st.session_state:
+        st.session_state._cookie_manager_instance = stx.CookieManager(key="koguma_cookies")
+    return st.session_state._cookie_manager_instance
 
 
 def restore_session_from_cookie():
-    """Cookieからセッションを復元（iOS Safari対応強化版・リトライ機能付き）"""
-    if st.session_state.get('_session_restore_done'):
-        return
-    
+    """Cookieからセッションを復元（CookieManager使用）"""
     if st.session_state.logged_in_user:
         return
     
+    if st.session_state.get('_session_restore_done'):
+        return
+    
     cookie_manager = get_cookie_manager()
-    session_token = get_cookie_with_retry(cookie_manager)
+    session_token = cookie_manager.get(COOKIE_NAME)
     
     st.session_state._session_restore_done = True
     
@@ -119,7 +101,7 @@ def restore_session_from_cookie():
             )
     else:
         if not st.session_state.get('_no_cookie_logged'):
-            log_session_event("NO_COOKIE", details=f"Cookie取得失敗（{COOKIE_RETRY_COUNT}回リトライ後）")
+            log_session_event("NO_COOKIE", details="Cookie取得失敗")
             st.session_state._no_cookie_logged = True
 
 
