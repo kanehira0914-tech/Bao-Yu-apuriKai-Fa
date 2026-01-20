@@ -193,9 +193,18 @@ streamlit run app.py --server.port 5000
 - 既存ユーザーのパスワードリセット機能
 - adminユーザーは削除不可
 - 料金マスター管理機能（基本料金・オプション・割引設定）
+- **セッションログビューワー**: iPad等での意図しないログアウトの原因特定用
+
+### セッションログ機能（デバッグ用）
+- `session_logs`テーブルにセッション関連イベントを記録
+- イベントタイプ: LOGIN_SUCCESS, LOGOUT, RESTORE_SUCCESS, RESTORE_FAILED, VALIDATE_EXPIRED等
+- 管理者ダッシュボードから直近100件のログを確認可能
+- iOS Safari特有の問題（Cookie削除、メモリ解放等）の原因追跡に活用
 
 ### データベーステーブル
 - `users`: ユーザー情報（id, username, password_hash, salt, role, display_name）
+- `user_sessions`: 永続ログインセッション（user_id, session_token, expires_at）
+- `session_logs`: セッションイベントログ（event_type, user_id, username, session_token_prefix, details）
 
 ## 最終更新
-2026年1月18日 - 管理者専用ダッシュボード追加、一般スタッフは領収書発行のみアクセス可能に制限
+2026年1月20日 - セッションログ機能追加（iPad/Safari意図しないログアウト調査用）
