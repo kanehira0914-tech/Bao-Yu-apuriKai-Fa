@@ -12,4 +12,5 @@ dependencies = [
     "pytz>=2025.2",
     "reportlab>=4.4.6",
     "streamlit>=1.52.1",
+    "streamlit-cookies-manager>=0.2.0",
 ]
