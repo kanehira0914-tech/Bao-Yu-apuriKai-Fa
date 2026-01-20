@@ -213,6 +213,19 @@ def init_database():
         )
     ''')
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS session_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            user_id INTEGER,
+            username TEXT,
+            session_token_prefix TEXT,
+            details TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     cursor.execute("SELECT COUNT(*) FROM fee_settings")
     if cursor.fetchone()[0] == 0:
         default_fees = [
@@ -309,35 +322,68 @@ def create_session(user_id: int) -> str:
     return session_token
 
 
-def validate_session(session_token: str) -> Optional[Dict]:
+def validate_session(session_token: str, user_agent: str = None) -> Optional[Dict]:
     """セッショントークンを検証し、有効ならユーザー情報を返す"""
     if not session_token:
+        log_session_event("VALIDATE_NO_TOKEN", details="セッショントークンが空", user_agent=user_agent)
         return None
     
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.id, u.username, u.role, u.display_name, s.expires_at
-        FROM user_sessions s
-        JOIN users u ON s.user_id = u.id
-        WHERE s.session_token = ?
-    """, (session_token,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row:
-        user_data = dict(row)
-        expires_at = datetime.fromisoformat(user_data['expires_at'])
-        if expires_at > datetime.now():
-            return {
-                'id': user_data['id'],
-                'username': user_data['username'],
-                'role': user_data['role'],
-                'display_name': user_data['display_name']
-            }
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT u.id, u.username, u.role, u.display_name, s.expires_at
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.session_token = ?
+        """, (session_token,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            user_data = dict(row)
+            expires_at = datetime.fromisoformat(user_data['expires_at'])
+            if expires_at > datetime.now():
+                log_session_event(
+                    "VALIDATE_SUCCESS", 
+                    user_id=user_data['id'], 
+                    username=user_data['username'],
+                    session_token=session_token,
+                    details=f"有効期限: {expires_at.isoformat()}",
+                    user_agent=user_agent
+                )
+                return {
+                    'id': user_data['id'],
+                    'username': user_data['username'],
+                    'role': user_data['role'],
+                    'display_name': user_data['display_name']
+                }
+            else:
+                log_session_event(
+                    "VALIDATE_EXPIRED", 
+                    user_id=user_data['id'], 
+                    username=user_data['username'],
+                    session_token=session_token,
+                    details=f"期限切れ: {expires_at.isoformat()}",
+                    user_agent=user_agent
+                )
+                delete_session(session_token)
         else:
-            delete_session(session_token)
-    return None
+            log_session_event(
+                "VALIDATE_NOT_FOUND", 
+                session_token=session_token,
+                details="DBにセッションが存在しない",
+                user_agent=user_agent
+            )
+        return None
+    except Exception as e:
+        log_session_event(
+            "VALIDATE_ERROR", 
+            session_token=session_token,
+            details=f"エラー: {str(e)}",
+            user_agent=user_agent
+        )
+        return None
 
 
 def delete_session(session_token: str):
@@ -365,6 +411,38 @@ def cleanup_expired_sessions():
     cursor.execute("DELETE FROM user_sessions WHERE expires_at < ?", (datetime.now().isoformat(),))
     conn.commit()
     conn.close()
+
+
+def log_session_event(event_type: str, user_id: int = None, username: str = None, 
+                      session_token: str = None, details: str = None, user_agent: str = None):
+    """セッションイベントをログに記録（デバッグ用）"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        token_prefix = session_token[:8] + "..." if session_token and len(session_token) > 8 else session_token
+        cursor.execute(
+            """INSERT INTO session_logs 
+               (event_type, user_id, username, session_token_prefix, details, user_agent) 
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (event_type, user_id, username, token_prefix, details, user_agent)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        pass
+
+
+def get_session_logs(limit: int = 100) -> List[Dict]:
+    """セッションログを取得"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM session_logs ORDER BY created_at DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def get_all_users() -> List[Dict]:

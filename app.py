@@ -15,7 +15,8 @@ from database import (
     authenticate_user, update_user_password, get_all_users, create_user,
     update_user, delete_user, get_user_by_id,
     get_all_fee_settings, get_fee_settings_by_category, update_fee_setting,
-    create_session, validate_session, delete_session, cleanup_expired_sessions
+    create_session, validate_session, delete_session, cleanup_expired_sessions,
+    log_session_event, get_session_logs
 )
 
 FACILITY_OPTIONS = {
@@ -59,25 +60,60 @@ if 'session_checked' not in st.session_state:
 COOKIE_NAME = "koguma_session"
 SESSION_EXPIRY_DAYS = 30
 
-@st.cache_resource
 def get_cookie_manager():
-    return stx.CookieManager()
+    if 'cookie_manager' not in st.session_state:
+        st.session_state.cookie_manager = stx.CookieManager()
+    return st.session_state.cookie_manager
 
 
 def restore_session_from_cookie():
-    """Cookieからセッションを復元"""
-    if st.session_state.session_checked:
+    """Cookieからセッションを復元（iOS Safari対応強化版）"""
+    if st.session_state.get('_session_restore_done'):
         return
     
-    st.session_state.session_checked = True
-    
     cookie_manager = get_cookie_manager()
-    session_token = cookie_manager.get(COOKIE_NAME)
     
-    if session_token and not st.session_state.logged_in_user:
+    try:
+        session_token = cookie_manager.get(COOKIE_NAME)
+    except Exception as e:
+        log_session_event("COOKIE_READ_ERROR", details=f"Cookie読み取りエラー: {str(e)}")
+        session_token = None
+    
+    if st.session_state.logged_in_user:
+        if not session_token and not st.session_state.get('_mismatch_logged'):
+            log_session_event(
+                "SESSION_STATE_MISMATCH",
+                user_id=st.session_state.logged_in_user.get('id'),
+                username=st.session_state.logged_in_user.get('username'),
+                details="session_stateにユーザーあるがCookieなし（iOS特有の問題の可能性）"
+            )
+            st.session_state._mismatch_logged = True
+        return
+    
+    st.session_state._session_restore_done = True
+    
+    if session_token:
+        log_session_event("RESTORE_ATTEMPT", session_token=session_token, details="Cookie復元試行")
         user = validate_session(session_token)
         if user:
             st.session_state.logged_in_user = user
+            log_session_event(
+                "RESTORE_SUCCESS",
+                user_id=user['id'],
+                username=user['username'],
+                session_token=session_token,
+                details="Cookie復元成功"
+            )
+        else:
+            log_session_event(
+                "RESTORE_FAILED",
+                session_token=session_token,
+                details="validate_sessionがNoneを返した"
+            )
+    else:
+        if not st.session_state.get('_no_cookie_logged'):
+            log_session_event("NO_COOKIE", details="Cookieが存在しない（初回アクセスまたは削除済み）")
+            st.session_state._no_cookie_logged = True
 
 
 def is_logged_in() -> bool:
@@ -100,24 +136,58 @@ def login(user: dict):
     session_token = create_session(user['id'])
     
     cookie_manager = get_cookie_manager()
-    cookie_manager.set(
-        COOKIE_NAME, 
-        session_token,
-        expires_at=datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
-    )
+    try:
+        cookie_manager.set(
+            COOKIE_NAME, 
+            session_token,
+            expires_at=datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
+        )
+        log_session_event(
+            "LOGIN_SUCCESS",
+            user_id=user['id'],
+            username=user['username'],
+            session_token=session_token,
+            details=f"ログイン成功、Cookie設定完了（有効期限: {SESSION_EXPIRY_DAYS}日）"
+        )
+    except Exception as e:
+        log_session_event(
+            "LOGIN_COOKIE_ERROR",
+            user_id=user['id'],
+            username=user['username'],
+            session_token=session_token,
+            details=f"Cookie設定エラー: {str(e)}"
+        )
 
 
 def logout():
     """ログアウト処理（Cookieを削除）"""
+    user = st.session_state.logged_in_user
     cookie_manager = get_cookie_manager()
-    session_token = cookie_manager.get(COOKIE_NAME)
+    
+    try:
+        session_token = cookie_manager.get(COOKIE_NAME)
+    except:
+        session_token = None
+    
+    log_session_event(
+        "LOGOUT",
+        user_id=user.get('id') if user else None,
+        username=user.get('username') if user else None,
+        session_token=session_token,
+        details="明示的ログアウト"
+    )
     
     if session_token:
         delete_session(session_token)
-        cookie_manager.delete(COOKIE_NAME)
+        try:
+            cookie_manager.delete(COOKIE_NAME)
+        except:
+            pass
     
     st.session_state.logged_in_user = None
-    st.session_state.session_checked = False
+    st.session_state._no_cookie_logged = False
+    st.session_state._session_restore_done = False
+    st.session_state._mismatch_logged = False
 
 
 def get_current_facility() -> str:
@@ -2499,6 +2569,57 @@ def show_admin_dashboard():
                             st.error("一部の料金設定の更新に失敗しました")
             else:
                 st.info(f"{category_name}の料金設定がありません。")
+    
+    st.markdown("---")
+    st.markdown("### 📋 セッションログ（デバッグ用）")
+    st.caption("iPad等での意図しないログアウトの原因特定用。直近100件のセッション関連イベントを表示。")
+    
+    if st.button("🔄 ログを更新", key="refresh_session_logs"):
+        st.rerun()
+    
+    session_logs = get_session_logs(100)
+    if session_logs:
+        log_data = []
+        for log in session_logs:
+            event_style = {
+                "LOGIN_SUCCESS": "🟢",
+                "LOGOUT": "🔴",
+                "RESTORE_SUCCESS": "🟢",
+                "RESTORE_ATTEMPT": "🟡",
+                "RESTORE_FAILED": "🔴",
+                "VALIDATE_SUCCESS": "🟢",
+                "VALIDATE_EXPIRED": "🟠",
+                "VALIDATE_NOT_FOUND": "🔴",
+                "VALIDATE_ERROR": "🔴",
+                "VALIDATE_NO_TOKEN": "⚪",
+                "NO_COOKIE": "⚪",
+                "COOKIE_READ_ERROR": "🔴",
+                "SESSION_STATE_MISMATCH": "🟠",
+                "LOGIN_COOKIE_ERROR": "🔴",
+            }.get(log['event_type'], "⚪")
+            
+            log_data.append({
+                "日時": log['created_at'][:19] if log['created_at'] else "",
+                "イベント": f"{event_style} {log['event_type']}",
+                "ユーザー": log['username'] or "-",
+                "トークン": log['session_token_prefix'] or "-",
+                "詳細": log['details'] or "-",
+            })
+        
+        st.dataframe(log_data, use_container_width=True, height=400)
+        
+        with st.expander("イベントタイプ凡例"):
+            st.markdown("""
+            - 🟢 **LOGIN_SUCCESS** / **RESTORE_SUCCESS** / **VALIDATE_SUCCESS**: 正常なログイン・復元・検証
+            - 🟡 **RESTORE_ATTEMPT**: Cookie復元試行中
+            - 🟠 **VALIDATE_EXPIRED** / **SESSION_STATE_MISMATCH**: 期限切れまたはiOS特有の問題
+            - 🔴 **LOGOUT**: 明示的ログアウト
+            - 🔴 **RESTORE_FAILED** / **VALIDATE_NOT_FOUND**: セッションがDBに存在しない
+            - 🔴 **VALIDATE_ERROR** / **COOKIE_READ_ERROR** / **LOGIN_COOKIE_ERROR**: エラー発生
+            - ⚪ **NO_COOKIE** / **VALIDATE_NO_TOKEN**: 初回アクセスまたはCookie未設定
+            """)
+    else:
+        st.info("セッションログがありません。")
 
 
 def show_settings():
