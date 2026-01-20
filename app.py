@@ -198,6 +198,11 @@ def set_success_message(msg: str, key: str = None):
 
 st.markdown("""
 <style>
+    /* Pull-to-Refresh（引っ張り更新）を無効化 - iPad/モバイル対応 */
+    body, html {
+        overscroll-behavior-y: none;
+    }
+    
     /* モバイルファースト - 基本スタイル */
     .main-header {
         font-size: 1.5rem;
