@@ -634,17 +634,11 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     
     st.markdown("---")
     
-    bulk_apply_key = f"bulk_apply_trigger_{rid}_{nap_index}"
-    if bulk_apply_key in st.session_state and st.session_state[bulk_apply_key]:
-        applied_staff = st.session_state[bulk_apply_key]
-        for ts in intervals:
-            st.session_state[nap_state_key][ts]['staff'] = applied_staff
-            widget_key = f"staff_{rid}_{nap_index}_{ts}"
-            if widget_key in st.session_state:
-                del st.session_state[widget_key]
-        st.session_state[prev_staff_key] = applied_staff
-        st.session_state[bulk_apply_key] = None
-        st.rerun()
+    # ウィジェットバージョン管理（一括設定時にインクリメントして新しいウィジェットを生成）
+    widget_version_key = f"staff_widget_version_{rid}_{nap_index}"
+    if widget_version_key not in st.session_state:
+        st.session_state[widget_version_key] = 0
+    widget_version = st.session_state[widget_version_key]
     
     st.markdown("**👤 担当者一括設定**")
     bulk_col1, bulk_col2 = st.columns([2, 1])
@@ -658,7 +652,10 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     with bulk_col2:
         if st.button("全員に設定", key=f"bulk_apply_btn_{rid}_{nap_index}", use_container_width=True):
             if bulk_staff:
-                st.session_state[bulk_apply_key] = bulk_staff
+                for ts in intervals:
+                    st.session_state[nap_state_key][ts]['staff'] = bulk_staff
+                st.session_state[prev_staff_key] = bulk_staff
+                st.session_state[widget_version_key] = widget_version + 1
                 st.rerun()
     
     st.markdown("---")
@@ -723,7 +720,7 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
                 "担当",
                 staff_names,
                 index=staff_idx,
-                key=f"staff_{rid}_{nap_index}_{time_slot}",
+                key=f"staff_{rid}_{nap_index}_{time_slot}_v{widget_version}",
                 label_visibility="collapsed"
             )
             if selected_staff != state['staff']:
