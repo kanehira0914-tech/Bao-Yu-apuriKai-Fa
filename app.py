@@ -17,7 +17,7 @@ from database import (
     update_user, delete_user, get_user_by_id,
     get_all_fee_settings, get_fee_settings_by_category, update_fee_setting,
     create_session, validate_session, delete_session, cleanup_expired_sessions,
-    log_session_event, get_session_logs
+    log_session_event, get_session_logs, get_jst_now
 )
 
 FACILITY_OPTIONS = {
@@ -129,7 +129,7 @@ def login(user: dict):
         cookie_manager.set(
             COOKIE_NAME, 
             session_token,
-            expires_at=datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
+            expires_at=get_jst_now() + timedelta(days=SESSION_EXPIRY_DAYS)
         )
         log_session_event(
             "LOGIN_SUCCESS",
@@ -633,6 +633,27 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     arrow_names = {'up': '仰向け', 'down': 'うつ伏せ', 'left': '左向き', 'right': '右向き'}
     
     st.markdown("---")
+    
+    st.markdown("**👤 担当者一括設定**")
+    bulk_col1, bulk_col2 = st.columns([2, 1])
+    with bulk_col1:
+        bulk_staff = st.selectbox(
+            "一括設定する担当者",
+            staff_names,
+            key=f"bulk_staff_{rid}_{nap_index}",
+            label_visibility="collapsed"
+        )
+    with bulk_col2:
+        if st.button("全員に設定", key=f"bulk_apply_{rid}_{nap_index}", use_container_width=True):
+            if bulk_staff != "---":
+                for ts in intervals:
+                    st.session_state[nap_state_key][ts]['staff'] = bulk_staff
+                st.session_state[prev_staff_key] = bulk_staff
+                st.rerun()
+            else:
+                st.warning("担当者を選択してください")
+    
+    st.markdown("---")
     st.markdown("**凡例**: ↑仰向け ↓うつ伏せ ←左向き →右向き  ◯=体位修正あり")
     st.markdown("---")
     
@@ -1001,11 +1022,11 @@ def show_child_card(res: dict, show_quick_actions: bool = False):
             with col2:
                 if not has_checkin:
                     if st.button("🟢 登園", key=f"quick_in_{res['id']}", use_container_width=True):
-                        update_attendance(res['id'], {'check_in_time': datetime.now().isoformat()})
+                        update_attendance(res['id'], {'check_in_time': get_jst_now().isoformat()})
                         st.rerun()
                 elif not has_checkout:
                     if st.button("🔴 降園", key=f"quick_out_{res['id']}", use_container_width=True):
-                        now = datetime.now()
+                        now = get_jst_now()
                         update_data = {'check_out_time': now.isoformat()}
                         scheduled_end = res.get('end_time', '')
                         if scheduled_end:
@@ -1264,7 +1285,7 @@ def show_attendance_tab(res: dict):
         else:
             st.markdown('<div class="big-action-btn">', unsafe_allow_html=True)
             if st.button("🟢 登園", type="primary", use_container_width=True, key="checkin_main"):
-                update_attendance(res['id'], {'check_in_time': datetime.now().isoformat()})
+                update_attendance(res['id'], {'check_in_time': get_jst_now().isoformat()})
                 st.success("登園を記録しました！")
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1279,7 +1300,7 @@ def show_attendance_tab(res: dict):
         else:
             st.markdown('<div class="big-action-btn">', unsafe_allow_html=True)
             if st.button("🔴 降園", type="primary", use_container_width=True, key="checkout_main"):
-                now = datetime.now()
+                now = get_jst_now()
                 update_data = {'check_out_time': now.isoformat()}
                 
                 scheduled_end = res.get('end_time', '')

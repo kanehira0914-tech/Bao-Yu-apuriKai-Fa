@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 from typing import Dict, List
 from pricing import needs_certification
+from database import get_jst_now
 
 FONT_PATH = "fonts/ipaexg.ttf"
 FONT_NAME = "IPAexGothic"
@@ -37,7 +38,7 @@ def generate_receipt_pdf(
         raise Exception("日本語フォントの読み込みに失敗しました")
     
     if not output_path:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_jst_now().strftime("%Y%m%d_%H%M%S")
         child_name = reservation.get('child_name', 'unknown').replace(' ', '_')
         output_path = f"receipts/{timestamp}_{child_name}.pdf"
     
@@ -61,7 +62,7 @@ def generate_receipt_pdf(
     y -= 15*mm
     c.setFont(FONT_NAME, 10)
     
-    c.drawString(140*mm, y, f"発行日　　{datetime.now().strftime('%Y年%m月%d日')}")
+    c.drawString(140*mm, y, f"発行日　　{get_jst_now().strftime('%Y年%m月%d日')}")
     y -= 7*mm
     c.drawString(140*mm, y, f"会社名　　{COMPANY_INFO['name']}")
     y -= 7*mm
