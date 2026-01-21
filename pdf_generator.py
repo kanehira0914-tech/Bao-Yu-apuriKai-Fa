@@ -117,6 +117,15 @@ def generate_receipt_pdf(
     service_category = reservation.get('service_category', '')
     show_certification = needs_certification(service_category)
     
+    staff_name = reservation.get('staff_name', '') or ''
+    facility_fee = reservation.get('facility_fee', 0) or 0
+    base_price = reservation.get('base_price', 0) or 0
+    total_amount = reservation.get('total_amount', 0) or 0
+    transport_fee = reservation.get('transport_fee', 0) or 0
+    discount1 = reservation.get('discount1', '') or ''
+    discount2 = reservation.get('discount2', '') or ''
+    additional_fee = reservation.get('additional_fee', 0) or 0
+    
     datetime_str = reservation.get('reservation_datetime', '')
     start_time = reservation.get('start_time', '')
     end_time = reservation.get('end_time', '')

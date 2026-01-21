@@ -699,6 +699,17 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
             )
             if selected_staff != state['staff']:
                 st.session_state[nap_state_key][time_slot]['staff'] = selected_staff
+                st.session_state[prev_staff_key] = selected_staff
+                propagated = False
+                for other_idx in [1, 2, 3]:
+                    other_key = f"nap_check_state_{rid}_{other_idx}"
+                    if other_key in st.session_state:
+                        for ts in st.session_state[other_key]:
+                            if st.session_state[other_key][ts].get('staff') == "---":
+                                st.session_state[other_key][ts]['staff'] = selected_staff
+                                propagated = True
+                if propagated:
+                    st.rerun()
         
         st.markdown('<hr style="margin:4px 0; border:none; border-top:1px solid #eee;">', unsafe_allow_html=True)
     
