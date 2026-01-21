@@ -635,20 +635,23 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     st.markdown("---")
     
     st.markdown("**👤 担当者一括設定**")
+    bulk_key = f"bulk_staff_{rid}_{nap_index}"
     bulk_col1, bulk_col2 = st.columns([2, 1])
     with bulk_col1:
         bulk_staff = st.selectbox(
             "一括設定する担当者",
             staff_names,
-            key=f"bulk_staff_{rid}_{nap_index}",
+            key=bulk_key,
             label_visibility="collapsed"
         )
     with bulk_col2:
         if st.button("全員に設定", key=f"bulk_apply_{rid}_{nap_index}", use_container_width=True):
-            if bulk_staff != "---":
+            selected_bulk = st.session_state.get(bulk_key, "---")
+            if selected_bulk and selected_bulk != "---":
                 for ts in intervals:
-                    st.session_state[nap_state_key][ts]['staff'] = bulk_staff
-                st.session_state[prev_staff_key] = bulk_staff
+                    st.session_state[nap_state_key][ts]['staff'] = selected_bulk
+                st.session_state[prev_staff_key] = selected_bulk
+                st.success(f"✅ 全員を「{selected_bulk}」に設定しました")
                 st.rerun()
             else:
                 st.warning("担当者を選択してください")
