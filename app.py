@@ -634,23 +634,32 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     
     st.markdown("---")
     
-    with st.form(key=f"bulk_staff_form_{rid}_{nap_index}"):
-        st.markdown("**👤 担当者一括設定**")
-        bulk_col1, bulk_col2 = st.columns([2, 1])
-        with bulk_col1:
-            bulk_staff = st.selectbox(
-                "担当者を選択",
-                staff_names[1:],
-                key=f"bulk_staff_select_{rid}_{nap_index}"
-            )
-        with bulk_col2:
-            submitted = st.form_submit_button("全員に設定", use_container_width=True)
-        
-        if submitted and bulk_staff:
-            for ts in intervals:
-                st.session_state[nap_state_key][ts]['staff'] = bulk_staff
-            st.session_state[prev_staff_key] = bulk_staff
-            st.success(f"✅ 全員を「{bulk_staff}」に設定しました")
+    bulk_apply_key = f"bulk_apply_trigger_{rid}_{nap_index}"
+    if bulk_apply_key in st.session_state and st.session_state[bulk_apply_key]:
+        applied_staff = st.session_state[bulk_apply_key]
+        for ts in intervals:
+            st.session_state[nap_state_key][ts]['staff'] = applied_staff
+            widget_key = f"staff_{rid}_{nap_index}_{ts}"
+            if widget_key in st.session_state:
+                del st.session_state[widget_key]
+        st.session_state[prev_staff_key] = applied_staff
+        st.session_state[bulk_apply_key] = None
+        st.rerun()
+    
+    st.markdown("**👤 担当者一括設定**")
+    bulk_col1, bulk_col2 = st.columns([2, 1])
+    with bulk_col1:
+        bulk_staff = st.selectbox(
+            "担当者を選択",
+            staff_names[1:],
+            key=f"bulk_staff_select_{rid}_{nap_index}",
+            label_visibility="collapsed"
+        )
+    with bulk_col2:
+        if st.button("全員に設定", key=f"bulk_apply_btn_{rid}_{nap_index}", use_container_width=True):
+            if bulk_staff:
+                st.session_state[bulk_apply_key] = bulk_staff
+                st.rerun()
     
     st.markdown("---")
     st.markdown("**凡例**: ↑仰向け ↓うつ伏せ ←左向き →右向き  ◯=体位修正あり")
