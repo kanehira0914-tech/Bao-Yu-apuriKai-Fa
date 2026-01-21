@@ -78,7 +78,9 @@ def generate_receipt_pdf(
     c.drawString(20*mm, y, address)
     
     y -= 10*mm
-    guardian_name = reservation.get('guardian_name', '') or reservation.get('child_name', '')
+    guardian_name = reservation.get('guardian_name', '')
+    if not guardian_name or str(guardian_name).lower() == 'nan':
+        guardian_name = reservation.get('child_name', '')
     c.setFont(FONT_NAME, 14)
     c.drawString(20*mm, y, f"{guardian_name}　様")
     
@@ -125,20 +127,21 @@ def generate_receipt_pdf(
     else:
         usage_time = datetime_str.replace('\n', ' ')
     
-    staff_name = reservation.get('staff_name', '')
-    cert_date = reservation.get('certification_date', '') if show_certification else ''
-    cert_type = reservation.get('certification_type', '') if show_certification else ''
+    cert_date = reservation.get('certification_date', '') or ''
+    cert_type = reservation.get('certification_type', '') or ''
     
-    facility_fee = reservation.get('facility_fee', 0) or 0
-    base_price = reservation.get('base_price', 0) or 0
-    transport_fee = reservation.get('transport_fee', 0) or 0
-    discount1 = reservation.get('discount1', '') or ''
-    discount1_amount = reservation.get('discount1_amount', 0) or 0
-    discount2 = reservation.get('discount2', '') or ''
-    discount2_amount = reservation.get('discount2_amount', 0) or 0
-    additional_fee = reservation.get('additional_fee', 0) or 0
-    total_amount = reservation.get('total_amount', 0) or (base_price + facility_fee)
-    
+    # 担当者に紐づく要件証明情報の自動補完（予約データにない場合）
+    if show_certification and staff_name:
+        from database import get_staff_list
+        staff_list = get_staff_list(reservation.get('facility_id', 'house'))
+        for s in staff_list:
+            if s['name'] == staff_name:
+                if not cert_date:
+                    cert_date = s.get('certification_date', '')
+                if not cert_type:
+                    cert_type = s.get('certification_type', '')
+                break
+
     row_data = [
         usage_time[:20],
         staff_name[:6] if staff_name else '',

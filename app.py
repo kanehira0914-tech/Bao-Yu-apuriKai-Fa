@@ -425,9 +425,7 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
     rid = reservation_id
     db_key = f"care_db_{rid}"
     
-    if db_key in st.session_state and not force_reload:
-        return
-    
+    # 常に最新のデータを取得するように修正（Stateが消える問題への対応）
     records = get_care_records(reservation_id)
     
     care_data = {}
@@ -602,9 +600,13 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
     staff_list = get_staff_list(facility)
     staff_names = ["---"] + [s['name'] for s in staff_list]
     
+    # 午睡チェックの状態管理
     nap_state_key = f"nap_check_state_{rid}_{nap_index}"
     if nap_state_key not in st.session_state:
         st.session_state[nap_state_key] = {}
+    
+    # 担当者自動入力のための前回値保持
+    prev_staff_key = f"prev_staff_{rid}"
     
     for time_slot in intervals:
         if time_slot not in st.session_state[nap_state_key]:
@@ -616,10 +618,15 @@ def show_nap_check_detail(rid: int, nap_index: int, start_time: str, end_time: s
                     'staff': log['staff_name'] or "---"
                 }
             else:
+                # 1回目以降のデフォルト担当者設定
+                default_staff = "---"
+                if prev_staff_key in st.session_state:
+                    default_staff = st.session_state[prev_staff_key]
+                
                 st.session_state[nap_state_key][time_slot] = {
                     'direction': 'up',
                     'corrected': False,
-                    'staff': "---"
+                    'staff': default_staff
                 }
     
     arrow_labels = {'up': '↑', 'down': '↓', 'left': '←', 'right': '→'}
