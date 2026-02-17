@@ -318,7 +318,7 @@ def create_session(user_id: int) -> str:
     cursor = conn.cursor()
     
     session_token = secrets.token_urlsafe(32)
-    expires_at = (datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)).isoformat()
+    expires_at = (get_jst_now() + timedelta(days=SESSION_EXPIRY_DAYS)).isoformat()
     
     cursor.execute(
         "INSERT INTO user_sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)",
@@ -350,7 +350,8 @@ def validate_session(session_token: str, user_agent: str = None) -> Optional[Dic
         if row:
             user_data = dict(row)
             expires_at = datetime.fromisoformat(user_data['expires_at'])
-            if expires_at > datetime.now():
+            now_jst = get_jst_now().replace(tzinfo=None)
+            if expires_at > now_jst:
                 log_session_event(
                     "VALIDATE_SUCCESS", 
                     user_id=user_data['id'], 
@@ -415,7 +416,7 @@ def cleanup_expired_sessions():
     """期限切れセッションを削除"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM user_sessions WHERE expires_at < ?", (datetime.now().isoformat(),))
+    cursor.execute("DELETE FROM user_sessions WHERE expires_at < ?", (get_jst_now().replace(tzinfo=None).isoformat(),))
     conn.commit()
     conn.close()
 
