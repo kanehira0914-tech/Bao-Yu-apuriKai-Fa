@@ -69,16 +69,52 @@ def get_cookie_manager():
 
 
 def restore_session_from_cookie():
-    """Cookieからセッションを復元（CookieManager使用）"""
+    """Cookieからセッションを復元（CookieManager使用）
+    
+    CookieManagerはStreamlitコンポーネントであり、初回描画完了前は
+    Cookieを取得できない。複数回のrerunでCookieの準備完了を待つ。
+    """
     if st.session_state.logged_in_user:
-        return
+        return True
     
     if st.session_state.get('_session_restore_done'):
-        return
+        return True
     
     cookie_manager = get_cookie_manager()
-    session_token = cookie_manager.get(COOKIE_NAME)
     
+    cookie_ready_key = '_cookie_manager_ready'
+    cookie_retry_key = '_cookie_retry_count'
+    max_retries = 3
+    
+    if cookie_retry_key not in st.session_state:
+        st.session_state[cookie_retry_key] = 0
+    
+    try:
+        all_cookies = cookie_manager.get_all()
+    except Exception:
+        all_cookies = None
+    
+    if all_cookies is None:
+        if st.session_state[cookie_retry_key] < max_retries:
+            st.session_state[cookie_retry_key] += 1
+            log_session_event(
+                "COOKIE_WAIT",
+                details=f"CookieManager準備待ち（リトライ {st.session_state[cookie_retry_key]}/{max_retries}）"
+            )
+            import time
+            time.sleep(0.3)
+            st.rerun()
+            return False
+        else:
+            log_session_event("COOKIE_TIMEOUT", details=f"CookieManager準備タイムアウト（{max_retries}回試行）")
+            st.session_state._session_restore_done = True
+            st.session_state[cookie_retry_key] = 0
+            return True
+    
+    st.session_state[cookie_ready_key] = True
+    st.session_state[cookie_retry_key] = 0
+    
+    session_token = cookie_manager.get(COOKIE_NAME)
     st.session_state._session_restore_done = True
     
     if session_token:
@@ -101,8 +137,10 @@ def restore_session_from_cookie():
             )
     else:
         if not st.session_state.get('_no_cookie_logged'):
-            log_session_event("NO_COOKIE", details="Cookie取得失敗")
+            log_session_event("NO_COOKIE", details="Cookieにトークンなし（CookieManager準備済み）")
             st.session_state._no_cookie_logged = True
+    
+    return True
 
 
 def is_logged_in() -> bool:
@@ -825,7 +863,11 @@ def main():
     init_database()
     cleanup_expired_sessions()
     
-    restore_session_from_cookie()
+    cookie_ready = restore_session_from_cookie()
+    
+    if not cookie_ready:
+        st.spinner("読み込み中...")
+        return
     
     if not is_logged_in():
         show_login_page()
