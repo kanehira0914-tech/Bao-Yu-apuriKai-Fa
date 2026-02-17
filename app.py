@@ -1995,22 +1995,25 @@ def show_notes_tab(res: dict):
     st.markdown("### 📄 連絡帳")
     
     rid = res['id']
-    care_records = get_care_records(rid)
     child_name = res.get('child_name', '')
     
-    db_summary = generate_care_summary(care_records, child_name)
-    
     temp_key = f"renrakucho_{rid}"
+    textarea_key = f"care_summary_{rid}"
+    
     if temp_key in st.session_state.renrakucho_temp_save:
         initial_value = st.session_state.renrakucho_temp_save[temp_key]
+    elif textarea_key in st.session_state and st.session_state[textarea_key]:
+        initial_value = st.session_state[textarea_key]
     else:
-        initial_value = db_summary
+        care_records = get_care_records(rid)
+        initial_value = generate_care_summary(care_records, child_name)
+        st.session_state.renrakucho_temp_save[temp_key] = initial_value
     
     edited_summary = st.text_area(
         "本日のご様子（編集可能）", 
         value=initial_value, 
         height=250, 
-        key=f"care_summary_{rid}",
+        key=textarea_key,
         help="内容を編集後、一時保存ボタンで保存できます"
     )
     
@@ -2024,6 +2027,8 @@ def show_notes_tab(res: dict):
         if st.button("🔄 DB内容を再読込", use_container_width=True, key=f"reload_{rid}"):
             if temp_key in st.session_state.renrakucho_temp_save:
                 del st.session_state.renrakucho_temp_save[temp_key]
+            if textarea_key in st.session_state:
+                del st.session_state[textarea_key]
             st.rerun()
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
