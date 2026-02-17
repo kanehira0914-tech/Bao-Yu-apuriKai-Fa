@@ -97,17 +97,23 @@ def restore_session_from_cookie():
             st.session_state[cookie_retry_key] += 1
             log_session_event(
                 "COOKIE_WAIT",
-                details=f"CookieManager準備待ち（リトライ {st.session_state[cookie_retry_key]}/{max_retries}）"
+                details=f"CookieManager準備待ち（リトライ {st.session_state[cookie_retry_key]}/{max_retries}）。get_all()戻り値: {type(all_cookies).__name__}={all_cookies}"
             )
             time.sleep(0.3)
             st.rerun()
             return False
         else:
-            log_session_event("COOKIE_TIMEOUT", details=f"CookieManager準備タイムアウト（{max_retries}回試行）")
+            cookie_status = "None（コンポーネント未描画）" if all_cookies is None else f"空辞書（Cookie0件）"
+            log_session_event(
+                "COOKIE_TIMEOUT", 
+                details=f"CookieManager準備タイムアウト（{max_retries}回試行）。最終状態: {cookie_status}。原因: (1)iOSのITP/プライベートブラウズでCookieブロック (2)Safari設定で全Cookieブロック中 (3)CookieManagerコンポーネントの描画失敗"
+            )
             st.session_state[cookie_retry_key] = 0
             return True
     
     st.session_state[cookie_retry_key] = 0
+    cookie_count = len(all_cookies) if isinstance(all_cookies, dict) else 0
+    has_session_cookie = COOKIE_NAME in all_cookies if isinstance(all_cookies, dict) else False
     
     session_token = None
     try:
@@ -119,7 +125,11 @@ def restore_session_from_cookie():
         session_token = all_cookies.get(COOKIE_NAME)
     
     if session_token:
-        log_session_event("RESTORE_ATTEMPT", session_token=session_token, details="Cookie復元試行")
+        log_session_event(
+            "RESTORE_ATTEMPT", 
+            session_token=session_token, 
+            details=f"Cookie復元試行。Cookie総数: {cookie_count}, セッションCookie存在: {has_session_cookie}"
+        )
         user = validate_session(session_token)
         if user:
             st.session_state.logged_in_user = user
@@ -128,7 +138,7 @@ def restore_session_from_cookie():
                 user_id=user['id'],
                 username=user['username'],
                 session_token=session_token,
-                details="Cookie復元成功"
+                details=f"Cookie復元成功。ユーザー: {user.get('display_name', user['username'])}（{user['role']}）"
             )
             st.rerun()
             return False
@@ -136,14 +146,17 @@ def restore_session_from_cookie():
             log_session_event(
                 "RESTORE_FAILED",
                 session_token=session_token,
-                details="validate_sessionがNoneを返した（トークン無効/期限切れ）"
+                details=f"validate_sessionが失敗（詳細はVALIDATE_*ログを参照）。無効なCookieを削除します"
             )
             try:
                 cookie_manager.delete(COOKIE_NAME)
             except Exception:
                 pass
     else:
-        log_session_event("NO_COOKIE", details="Cookieにトークンなし（CookieManager準備済み）")
+        log_session_event(
+            "NO_COOKIE", 
+            details=f"セッションCookie('{COOKIE_NAME}')が存在しない。Cookie総数: {cookie_count}, 保存されたCookie名: {list(all_cookies.keys()) if isinstance(all_cookies, dict) else 'N/A'}。原因: (1)未ログイン (2)ログアウト済み (3)iOSがCookieを削除 (4)ブラウザのCookie期限切れ"
+        )
     
     return True
 

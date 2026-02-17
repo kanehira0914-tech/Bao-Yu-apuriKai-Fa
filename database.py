@@ -330,65 +330,98 @@ def create_session(user_id: int) -> str:
 
 
 def validate_session(session_token: str, user_agent: str = None) -> Optional[Dict]:
-    """セッショントークンを検証し、有効ならユーザー情報を返す"""
+    """セッショントークンを検証し、有効ならユーザー情報を返す
+    
+    失敗時のログ分類:
+    - VALIDATE_NO_TOKEN: トークン自体が空/None（iOSのCookie拒否・削除の可能性）
+    - VALIDATE_TOKEN_NOT_IN_DB: トークンがDBに存在しない（別デバイスでログアウト済み、またはDB初期化済み）
+    - VALIDATE_EXPIRED: トークンはDBにあるが有効期限切れ
+    - VALIDATE_USER_DELETED: セッションはあるがユーザーが削除されている
+    - VALIDATE_ERROR: DB接続エラー等の予期しないエラー
+    """
     if not session_token:
-        log_session_event("VALIDATE_NO_TOKEN", details="セッショントークンが空", user_agent=user_agent)
+        log_session_event(
+            "VALIDATE_NO_TOKEN", 
+            details="セッショントークンが空またはNone。原因: (1)Cookieが存在しない (2)iOSのITP/プライベートブラウズによるCookie拒否 (3)Safari設定でCookieブロック中 (4)Cookieの有効期限切れでブラウザが自動削除",
+            user_agent=user_agent
+        )
         return None
     
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT u.id, u.username, u.role, u.display_name, s.expires_at
-            FROM user_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ?
-        """, (session_token,))
-        row = cursor.fetchone()
-        conn.close()
         
-        if row:
-            user_data = dict(row)
-            expires_at = datetime.fromisoformat(user_data['expires_at'])
-            now_jst = get_jst_now().replace(tzinfo=None)
-            if expires_at > now_jst:
-                log_session_event(
-                    "VALIDATE_SUCCESS", 
-                    user_id=user_data['id'], 
-                    username=user_data['username'],
-                    session_token=session_token,
-                    details=f"有効期限: {expires_at.isoformat()}",
-                    user_agent=user_agent
-                )
-                return {
-                    'id': user_data['id'],
-                    'username': user_data['username'],
-                    'role': user_data['role'],
-                    'display_name': user_data['display_name']
-                }
-            else:
-                log_session_event(
-                    "VALIDATE_EXPIRED", 
-                    user_id=user_data['id'], 
-                    username=user_data['username'],
-                    session_token=session_token,
-                    details=f"期限切れ: {expires_at.isoformat()}",
-                    user_agent=user_agent
-                )
-                delete_session(session_token)
-        else:
+        cursor.execute("SELECT * FROM user_sessions WHERE session_token = ?", (session_token,))
+        session_row = cursor.fetchone()
+        
+        if not session_row:
+            conn.close()
             log_session_event(
-                "VALIDATE_NOT_FOUND", 
+                "VALIDATE_TOKEN_NOT_IN_DB", 
                 session_token=session_token,
-                details="DBにセッションが存在しない",
+                details="トークンがDBに存在しない。原因: (1)別デバイス/ブラウザで明示的にログアウト済み (2)管理者によるセッション削除 (3)cleanup_expired_sessionsで期限切れ削除済み (4)DB初期化/リセット",
                 user_agent=user_agent
             )
-        return None
+            return None
+        
+        session_data = dict(session_row)
+        user_id = session_data['user_id']
+        expires_at_str = session_data['expires_at']
+        
+        cursor.execute("SELECT id, username, role, display_name FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        conn.close()
+        
+        if not user_row:
+            log_session_event(
+                "VALIDATE_USER_DELETED", 
+                session_token=session_token,
+                details=f"セッションのユーザー(user_id={user_id})がusersテーブルに存在しない。原因: 管理者がユーザーを削除した可能性",
+                user_agent=user_agent
+            )
+            delete_session(session_token)
+            return None
+        
+        user_data = dict(user_row)
+        expires_at = datetime.fromisoformat(expires_at_str)
+        now_jst = get_jst_now().replace(tzinfo=None)
+        
+        if expires_at > now_jst:
+            remaining = expires_at - now_jst
+            remaining_days = remaining.days
+            log_session_event(
+                "VALIDATE_SUCCESS", 
+                user_id=user_data['id'], 
+                username=user_data['username'],
+                session_token=session_token,
+                details=f"検証成功。有効期限: {expires_at.strftime('%Y-%m-%d %H:%M')} JST（残り{remaining_days}日）、現在時刻: {now_jst.strftime('%Y-%m-%d %H:%M')} JST",
+                user_agent=user_agent
+            )
+            return {
+                'id': user_data['id'],
+                'username': user_data['username'],
+                'role': user_data['role'],
+                'display_name': user_data['display_name']
+            }
+        else:
+            expired_ago = now_jst - expires_at
+            expired_hours = expired_ago.total_seconds() / 3600
+            log_session_event(
+                "VALIDATE_EXPIRED", 
+                user_id=user_data['id'], 
+                username=user_data['username'],
+                session_token=session_token,
+                details=f"有効期限切れ。期限: {expires_at.strftime('%Y-%m-%d %H:%M')} JST、現在: {now_jst.strftime('%Y-%m-%d %H:%M')} JST（{expired_hours:.1f}時間超過）。原因: セッション有効期限({SESSION_EXPIRY_DAYS}日)を超過",
+                user_agent=user_agent
+            )
+            delete_session(session_token)
+            return None
+        
     except Exception as e:
         log_session_event(
             "VALIDATE_ERROR", 
             session_token=session_token,
-            details=f"エラー: {str(e)}",
+            details=f"予期しないエラー: {type(e).__name__}: {str(e)}。原因: DB接続障害またはデータ破損の可能性",
             user_agent=user_agent
         )
         return None
