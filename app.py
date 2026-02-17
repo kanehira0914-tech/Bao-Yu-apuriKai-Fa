@@ -71,20 +71,18 @@ def get_cookie_manager():
 def restore_session_from_cookie():
     """Cookieからセッションを復元（CookieManager使用）
     
-    CookieManagerはStreamlitコンポーネントであり、初回描画完了前は
-    Cookieを取得できない。複数回のrerunでCookieの準備完了を待つ。
+    iPadのSafariではページリフレッシュ時にst.session_stateが空になるため、
+    毎回CookieとDBを照合してログイン状態を復元する。
+    CookieManagerは初回描画完了前はCookieを取得できないため、
+    get_all()でコンポーネントの準備完了を確認してからトークンを読み取る。
     """
     if st.session_state.logged_in_user:
         return True
     
-    if st.session_state.get('_session_restore_done'):
-        return True
-    
     cookie_manager = get_cookie_manager()
     
-    cookie_ready_key = '_cookie_manager_ready'
     cookie_retry_key = '_cookie_retry_count'
-    max_retries = 3
+    max_retries = 5
     
     if cookie_retry_key not in st.session_state:
         st.session_state[cookie_retry_key] = 0
@@ -94,28 +92,31 @@ def restore_session_from_cookie():
     except Exception:
         all_cookies = None
     
-    if all_cookies is None:
+    if all_cookies is None or (isinstance(all_cookies, dict) and len(all_cookies) == 0 and st.session_state[cookie_retry_key] < 2):
         if st.session_state[cookie_retry_key] < max_retries:
             st.session_state[cookie_retry_key] += 1
             log_session_event(
                 "COOKIE_WAIT",
                 details=f"CookieManager準備待ち（リトライ {st.session_state[cookie_retry_key]}/{max_retries}）"
             )
-            import time
             time.sleep(0.3)
             st.rerun()
             return False
         else:
             log_session_event("COOKIE_TIMEOUT", details=f"CookieManager準備タイムアウト（{max_retries}回試行）")
-            st.session_state._session_restore_done = True
             st.session_state[cookie_retry_key] = 0
             return True
     
-    st.session_state[cookie_ready_key] = True
     st.session_state[cookie_retry_key] = 0
     
-    session_token = cookie_manager.get(COOKIE_NAME)
-    st.session_state._session_restore_done = True
+    session_token = None
+    try:
+        session_token = cookie_manager.get(COOKIE_NAME)
+    except Exception:
+        pass
+    
+    if not session_token and isinstance(all_cookies, dict):
+        session_token = all_cookies.get(COOKIE_NAME)
     
     if session_token:
         log_session_event("RESTORE_ATTEMPT", session_token=session_token, details="Cookie復元試行")
@@ -129,16 +130,20 @@ def restore_session_from_cookie():
                 session_token=session_token,
                 details="Cookie復元成功"
             )
+            st.rerun()
+            return False
         else:
             log_session_event(
                 "RESTORE_FAILED",
                 session_token=session_token,
-                details="validate_sessionがNoneを返した"
+                details="validate_sessionがNoneを返した（トークン無効/期限切れ）"
             )
+            try:
+                cookie_manager.delete(COOKIE_NAME)
+            except Exception:
+                pass
     else:
-        if not st.session_state.get('_no_cookie_logged'):
-            log_session_event("NO_COOKIE", details="Cookieにトークンなし（CookieManager準備済み）")
-            st.session_state._no_cookie_logged = True
+        log_session_event("NO_COOKIE", details="Cookieにトークンなし（CookieManager準備済み）")
     
     return True
 
@@ -167,14 +172,16 @@ def login(user: dict):
         cookie_manager.set(
             COOKIE_NAME, 
             session_token,
-            expires_at=get_jst_now() + timedelta(days=SESSION_EXPIRY_DAYS)
+            expires_at=get_jst_now() + timedelta(days=SESSION_EXPIRY_DAYS),
+            same_site="Lax",
+            secure=True
         )
         log_session_event(
             "LOGIN_SUCCESS",
             user_id=user['id'],
             username=user['username'],
             session_token=session_token,
-            details=f"ログイン成功、Cookie設定完了（有効期限: {SESSION_EXPIRY_DAYS}日）"
+            details=f"ログイン成功、Cookie設定完了（有効期限: {SESSION_EXPIRY_DAYS}日, SameSite=Lax, Secure=True）"
         )
     except Exception as e:
         log_session_event(
