@@ -175,14 +175,20 @@ def calculate_auto_fee(
         end_minutes += 24 * 60
     
     total_minutes = end_minutes - start_minutes
-    total_hours = total_minutes / 60
+    actual_hours = total_minutes / 60
+    billed_minutes = round_to_unit(total_minutes, 30)
+    billed_end_minutes = start_minutes + billed_minutes
+    total_hours = billed_minutes / 60
     
-    segments = calculate_time_segments(start_minutes, end_minutes, service_type)
+    segments = calculate_time_segments(start_minutes, billed_end_minutes, service_type)
     
     breakdown = []
     base_fee = 0
     
     if service_type == "一時預かり保育":
+        if actual_hours < 1:
+            breakdown.append({"item": "※最低利用時間は1時間です", "amount": 0})
+        
         rates = TEMPORARY_CARE_RATES[day_type]
         
         if segments["normal"] > 0:
@@ -212,7 +218,7 @@ def calculate_auto_fee(
             breakdown.append({"item": f"兄弟割引（{total_hours:.1f}時間×△400円）", "amount": -sibling_discount})
     
     elif service_type == "ベビーシッター（施設型）":
-        if total_hours < 2:
+        if actual_hours < 2:
             breakdown.append({"item": "※最低利用時間は2時間です", "amount": 0})
         
         rates = FACILITY_SITTER_RATES[day_type]
@@ -240,7 +246,7 @@ def calculate_auto_fee(
         sibling_discount = 0
     
     elif service_type == "ベビーシッター（自宅派遣型）":
-        if total_hours < 3:
+        if actual_hours < 3:
             breakdown.append({"item": "※最低利用時間は3時間です", "amount": 0})
         
         rates = HOME_SITTER_RATES[day_type]
@@ -350,6 +356,8 @@ def calculate_auto_fee(
         "breakdown": breakdown
     }
 
+EXTENSION_GRACE_MINUTES = 10
+
 def calculate_extension_fee(
     scheduled_end: str,
     actual_end: str,
@@ -367,7 +375,10 @@ def calculate_extension_fee(
     
     extension_minutes = int((actual - scheduled).total_seconds() / 60)
     
-    extension_units = round_to_unit(extension_minutes, 15)
+    if extension_minutes <= EXTENSION_GRACE_MINUTES:
+        return extension_minutes, 0
+    
+    extension_units = round_to_unit(extension_minutes, 30)
     
     day_type = "holiday" if is_holiday else "weekday"
     

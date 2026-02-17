@@ -32,7 +32,7 @@ FEE_CONFIG = {
         ],
         "facility_fee": 550,
         "sibling_discount_per_hour": 400,
-        "min_hours": None,
+        "min_hours": 1,
     },
     
     "facility_sitter": {

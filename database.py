@@ -642,7 +642,7 @@ def get_fee_config_from_db() -> Dict:
             ],
             "facility_fee": settings.get('temp_facility_fee', 550),
             "sibling_discount_per_hour": settings.get('temp_sibling_discount', 400),
-            "min_hours": None,
+            "min_hours": 1,
         },
         
         "facility_sitter": {

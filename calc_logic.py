@@ -164,11 +164,17 @@ def calculate_slot_overlap(
     return max(0, overlap_end - overlap_start)
 
 
+def round_to_30min(minutes: int) -> int:
+    """分数を30分単位に切り上げ"""
+    return ((minutes + 29) // 30) * 30
+
+
 def calculate_time_breakdown(
     start_time: time,
     end_time: time,
     slots: List[TimeSlot],
-    is_holiday: bool
+    is_holiday: bool,
+    billed_end_minutes: int = None
 ) -> List[FeeBreakdownItem]:
     """時間帯ごとの料金内訳を計算"""
     start_minutes = time_to_minutes(start_time)
@@ -176,6 +182,9 @@ def calculate_time_breakdown(
     
     if end_minutes <= start_minutes:
         end_minutes += 24 * 60
+    
+    if billed_end_minutes is not None:
+        end_minutes = billed_end_minutes
     
     breakdown = []
     
@@ -222,10 +231,19 @@ def calculate_temporary_care(
     if end_minutes <= start_minutes:
         end_minutes += 24 * 60
     total_minutes = end_minutes - start_minutes
-    total_hours = total_minutes / 60
+    actual_hours = total_minutes / 60
+    billed_minutes = round_to_30min(total_minutes)
+    billed_end_minutes = start_minutes + billed_minutes
+    total_hours = billed_minutes / 60
+    
+    warnings = []
+    config = get_fee_config()
+    min_hours = config["temporary_care"].get("min_hours")
+    if min_hours and actual_hours < min_hours:
+        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {actual_hours:.1f}時間）")
     
     slots = get_temporary_care_slots()
-    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday, billed_end_minutes=billed_end_minutes)
     
     base_fee = sum(item.amount for item in breakdown)
     
@@ -254,7 +272,7 @@ def calculate_temporary_care(
         option_fee=0,
         transport_fee=0,
         total=total,
-        warnings=[]
+        warnings=warnings
     )
 
 
@@ -276,15 +294,18 @@ def calculate_facility_sitter(
     if end_minutes <= start_minutes:
         end_minutes += 24 * 60
     total_minutes = end_minutes - start_minutes
-    total_hours = total_minutes / 60
+    actual_hours = total_minutes / 60
+    billed_minutes = round_to_30min(total_minutes)
+    billed_end_minutes = start_minutes + billed_minutes
+    total_hours = billed_minutes / 60
     
     min_hours = get_min_hours_facility_sitter()
     warnings = []
-    if total_hours < min_hours:
-        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {total_hours:.1f}時間）")
+    if actual_hours < min_hours:
+        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {actual_hours:.1f}時間）")
     
     slots = get_facility_sitter_slots()
-    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday, billed_end_minutes=billed_end_minutes)
     
     base_fee = sum(item.amount for item in breakdown)
     
@@ -333,15 +354,18 @@ def calculate_home_sitter(
     if end_minutes <= start_minutes:
         end_minutes += 24 * 60
     total_minutes = end_minutes - start_minutes
-    total_hours = total_minutes / 60
+    actual_hours = total_minutes / 60
+    billed_minutes = round_to_30min(total_minutes)
+    billed_end_minutes = start_minutes + billed_minutes
+    total_hours = billed_minutes / 60
     
     min_hours = get_min_hours_home_sitter()
     warnings = []
-    if total_hours < min_hours:
-        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {total_hours:.1f}時間）")
+    if actual_hours < min_hours:
+        warnings.append(f"⚠️ 最低利用時間は{min_hours}時間です（現在: {actual_hours:.1f}時間）")
     
     slots = get_home_sitter_slots()
-    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday)
+    breakdown = calculate_time_breakdown(start_time, end_time, slots, is_holiday, billed_end_minutes=billed_end_minutes)
     
     base_fee = sum(item.amount for item in breakdown)
     
