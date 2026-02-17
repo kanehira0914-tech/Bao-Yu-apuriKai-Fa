@@ -1420,6 +1420,13 @@ def show_attendance_tab(res: dict):
                     st.info("無料キャンセルしました")
                 st.rerun()
 
+def _auto_save_care(rid, field, widget_key):
+    """ウィジェット変更時にsession_stateのcare_dataへ自動保存するコールバック"""
+    db_key = f"care_db_{rid}"
+    if db_key not in st.session_state:
+        st.session_state[db_key] = {}
+    st.session_state[db_key][field] = st.session_state[widget_key]
+
 def show_care_tab(res: dict):
     st.markdown("### 🍚 ケア記録")
     
@@ -1452,15 +1459,19 @@ def show_care_tab(res: dict):
     
     col1, col2 = st.columns(2)
     with col1:
-        temp1_time = st.time_input("検温時刻①", value=temp1_time_default, key=f"temp1_time_{rid}")
+        temp1_time = st.time_input("検温時刻①", value=temp1_time_default, key=f"temp1_time_{rid}",
+                                   on_change=_auto_save_care, args=(rid, 'temp1_time', f"temp1_time_{rid}"))
     with col2:
-        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=temp1_val_default, step=0.1, format="%.1f", key=f"temp1_val_{rid}")
+        temp1_val = st.number_input("体温①（℃）", min_value=35.0, max_value=42.0, value=temp1_val_default, step=0.1, format="%.1f", key=f"temp1_val_{rid}",
+                                    on_change=_auto_save_care, args=(rid, 'temp1_val', f"temp1_val_{rid}"))
     
     col1, col2 = st.columns(2)
     with col1:
-        temp2_time = st.time_input("検温時刻②", value=temp2_time_default, key=f"temp2_time_{rid}")
+        temp2_time = st.time_input("検温時刻②", value=temp2_time_default, key=f"temp2_time_{rid}",
+                                   on_change=_auto_save_care, args=(rid, 'temp2_time', f"temp2_time_{rid}"))
     with col2:
-        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=temp2_val_default, step=0.1, format="%.1f", key=f"temp2_val_{rid}")
+        temp2_val = st.number_input("体温②（℃）", min_value=35.0, max_value=42.0, value=temp2_val_default, step=0.1, format="%.1f", key=f"temp2_val_{rid}",
+                                    on_change=_auto_save_care, args=(rid, 'temp2_val', f"temp2_val_{rid}"))
     
     if st.button("🌡️ 体温を記録", key=f"save_temp_{rid}", use_container_width=True):
         recorded = False
@@ -1487,10 +1498,13 @@ def show_care_tab(res: dict):
     lunch_amount_idx = amount_options.index(lunch_amount_default) if lunch_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
-        lunch_time = st.selectbox("昼食時刻", lunch_time_options, index=lunch_time_idx, key=f"lunch_time_{rid}")
+        lunch_time = st.selectbox("昼食時刻", lunch_time_options, index=lunch_time_idx, key=f"lunch_time_{rid}",
+                                  on_change=_auto_save_care, args=(rid, 'lunch_time', f"lunch_time_{rid}"))
     with col2:
-        lunch_amount = st.selectbox("昼食の量", amount_options, index=lunch_amount_idx, key=f"lunch_amount_{rid}")
-    lunch_content = st.text_input("昼食内容（15文字程度）", value=lunch_content_default, max_chars=20, key=f"lunch_content_{rid}", placeholder="例：ご飯、味噌汁、煮物")
+        lunch_amount = st.selectbox("昼食の量", amount_options, index=lunch_amount_idx, key=f"lunch_amount_{rid}",
+                                    on_change=_auto_save_care, args=(rid, 'lunch_amount', f"lunch_amount_{rid}"))
+    lunch_content = st.text_input("昼食内容（15文字程度）", value=lunch_content_default, max_chars=20, key=f"lunch_content_{rid}", placeholder="例：ご飯、味噌汁、煮物",
+                                  on_change=_auto_save_care, args=(rid, 'lunch_content', f"lunch_content_{rid}"))
     if st.button("🍚 昼食を記録", key=f"save_lunch_{rid}", use_container_width=True):
         if lunch_time != "---" and lunch_amount != "---":
             details = f"{lunch_time} {lunch_amount}"
@@ -1511,10 +1525,13 @@ def show_care_tab(res: dict):
     snack_amount_idx = amount_options.index(snack_amount_default) if snack_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
-        snack_time = st.selectbox("おやつ時刻", snack_time_options, index=snack_time_idx, key=f"snack_time_{rid}")
+        snack_time = st.selectbox("おやつ時刻", snack_time_options, index=snack_time_idx, key=f"snack_time_{rid}",
+                                  on_change=_auto_save_care, args=(rid, 'snack_time', f"snack_time_{rid}"))
     with col2:
-        snack_amount = st.selectbox("おやつの量", amount_options, index=snack_amount_idx, key=f"snack_amount_{rid}")
-    snack_content = st.text_input("おやつ内容（15文字程度）", value=snack_content_default, max_chars=20, key=f"snack_content_{rid}", placeholder="例：ビスケット、牛乳")
+        snack_amount = st.selectbox("おやつの量", amount_options, index=snack_amount_idx, key=f"snack_amount_{rid}",
+                                    on_change=_auto_save_care, args=(rid, 'snack_amount', f"snack_amount_{rid}"))
+    snack_content = st.text_input("おやつ内容（15文字程度）", value=snack_content_default, max_chars=20, key=f"snack_content_{rid}", placeholder="例：ビスケット、牛乳",
+                                  on_change=_auto_save_care, args=(rid, 'snack_content', f"snack_content_{rid}"))
     if st.button("🍪 おやつを記録", key=f"save_snack_{rid}", use_container_width=True):
         if snack_time != "---" and snack_amount != "---":
             details = f"{snack_time} {snack_amount}"
@@ -1533,9 +1550,11 @@ def show_care_tab(res: dict):
     dinner_amount_idx = amount_options.index(dinner_amount_default) if dinner_amount_default in amount_options else 0
     col1, col2 = st.columns(2)
     with col1:
-        dinner_time = st.time_input("夕食時刻", value=dinner_time_default, key=f"dinner_time_{rid}")
+        dinner_time = st.time_input("夕食時刻", value=dinner_time_default, key=f"dinner_time_{rid}",
+                                    on_change=_auto_save_care, args=(rid, 'dinner_time', f"dinner_time_{rid}"))
     with col2:
-        dinner_amount = st.selectbox("夕食の量", amount_options, index=dinner_amount_idx, key=f"dinner_amount_{rid}")
+        dinner_amount = st.selectbox("夕食の量", amount_options, index=dinner_amount_idx, key=f"dinner_amount_{rid}",
+                                     on_change=_auto_save_care, args=(rid, 'dinner_amount', f"dinner_amount_{rid}"))
     if st.button("🍽️ 夕食を記録", key=f"save_dinner_{rid}", use_container_width=True):
         if dinner_time and dinner_amount != "---":
             add_care_record(rid, 'dinner', f"{dinner_time.strftime('%H:%M')} {dinner_amount}")
@@ -1553,9 +1572,11 @@ def show_care_tab(res: dict):
         milk_amount_default = care_data.get(f'milk_amount_{i}', 100)
         col1, col2 = st.columns(2)
         with col1:
-            milk_time = st.time_input(f"時刻{i}", value=milk_time_default, key=f"milk_time_{rid}_{i}")
+            milk_time = st.time_input(f"時刻{i}", value=milk_time_default, key=f"milk_time_{rid}_{i}",
+                                      on_change=_auto_save_care, args=(rid, f'milk_time_{i}', f"milk_time_{rid}_{i}"))
         with col2:
-            milk_amount = st.number_input(f"ミルク量{i}（ml）", min_value=0, max_value=500, value=milk_amount_default, step=10, key=f"milk_amount_{rid}_{i}")
+            milk_amount = st.number_input(f"ミルク量{i}（ml）", min_value=0, max_value=500, value=milk_amount_default, step=10, key=f"milk_amount_{rid}_{i}",
+                                          on_change=_auto_save_care, args=(rid, f'milk_amount_{i}', f"milk_amount_{rid}_{i}"))
         
         if st.button(f"🍼 ミルク{i}を記録", key=f"save_milk_{rid}_{i}", use_container_width=True):
             if milk_time:
@@ -1575,9 +1596,11 @@ def show_care_tab(res: dict):
         stool_type_idx = stool_options.index(stool_type_default) if stool_type_default in stool_options else 0
         col1, col2 = st.columns(2)
         with col1:
-            stool_time = st.time_input(f"時刻{i}", value=stool_time_default, key=f"stool_time_{rid}_{i}")
+            stool_time = st.time_input(f"時刻{i}", value=stool_time_default, key=f"stool_time_{rid}_{i}",
+                                       on_change=_auto_save_care, args=(rid, f'stool_time_{i}', f"stool_time_{rid}_{i}"))
         with col2:
-            stool_type = st.selectbox(f"便の様子{i}", stool_options, index=stool_type_idx, key=f"stool_type_{rid}_{i}")
+            stool_type = st.selectbox(f"便の様子{i}", stool_options, index=stool_type_idx, key=f"stool_type_{rid}_{i}",
+                                      on_change=_auto_save_care, args=(rid, f'stool_type_{i}', f"stool_type_{rid}_{i}"))
         
         if st.button(f"💩 排便{i}を記録", key=f"save_stool_{rid}_{i}", use_container_width=True):
             if stool_time and stool_type != "---":
@@ -1605,9 +1628,11 @@ def show_care_tab(res: dict):
         st.markdown(f"**お昼寝{i}**")
         col1, col2 = st.columns(2)
         with col1:
-            nap_start = st.selectbox(f"開始{i}", nap_time_options, index=nap_start_idx, key=f"nap_start_{rid}_{i}")
+            nap_start = st.selectbox(f"開始{i}", nap_time_options, index=nap_start_idx, key=f"nap_start_{rid}_{i}",
+                                     on_change=_auto_save_care, args=(rid, f'nap_start_{i}', f"nap_start_{rid}_{i}"))
         with col2:
-            nap_end = st.selectbox(f"終了{i}", nap_time_options, index=nap_end_idx, key=f"nap_end_{rid}_{i}")
+            nap_end = st.selectbox(f"終了{i}", nap_time_options, index=nap_end_idx, key=f"nap_end_{rid}_{i}",
+                                   on_change=_auto_save_care, args=(rid, f'nap_end_{i}', f"nap_end_{rid}_{i}"))
         
         col_save, col_detail = st.columns(2)
         with col_save:
@@ -1659,7 +1684,8 @@ def show_care_tab(res: dict):
     with st.expander("📝 その他・自由記述"):
         show_success_message("other")
         other_note_default = care_data.get('other_note', "")
-        other_note = st.text_area("内容", value=other_note_default, placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed", key=f"other_note_{rid}")
+        other_note = st.text_area("内容", value=other_note_default, placeholder="例：機嫌よく遊んでいました", height=100, label_visibility="collapsed", key=f"other_note_{rid}",
+                                  on_change=_auto_save_care, args=(rid, 'other_note', f"other_note_{rid}"))
         if st.button("記録する", key=f"other_{rid}", use_container_width=True):
             if other_note:
                 add_care_record(rid, 'other', other_note)
