@@ -483,7 +483,9 @@ def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
     rid = reservation_id
     db_key = f"care_db_{rid}"
     
-    # 常に最新のデータを取得するように修正（Stateが消える問題への対応）
+    if not force_reload and db_key in st.session_state and st.session_state[db_key]:
+        return
+    
     records = get_care_records(reservation_id)
     
     care_data = {}
@@ -1306,7 +1308,7 @@ def show_detail_input(reservation_id: int):
         st.session_state.selected_reservation_id = None
         return
     
-    load_care_data_to_session(reservation_id, force_reload=True)
+    load_care_data_to_session(reservation_id)
     
     if st.button("← 戻る", use_container_width=True):
         st.session_state.selected_reservation_id = None
