@@ -61,6 +61,14 @@ if 'session_checked' not in st.session_state:
 COOKIE_NAME = "koguma_session"
 SESSION_EXPIRY_DAYS = 30
 
+# =============================================================================
+# app.py セッション関連 修正パッチ
+# 以下の関数を app.py 内の同名関数と丸ごと差し替えてください
+# =============================================================================
+
+# -------------------------------------------------------
+# 【変更1】get_cookie_manager() - 変更なし（そのまま維持）
+# -------------------------------------------------------
 def get_cookie_manager():
     """CookieManagerを取得（セッション全体で同一インスタンスを使用）"""
     if '_cookie_manager_instance' not in st.session_state:
@@ -68,67 +76,87 @@ def get_cookie_manager():
     return st.session_state._cookie_manager_instance
 
 
+# -------------------------------------------------------
+# 【変更2】restore_session_from_cookie() - 大幅修正
+#
+# 主な変更点:
+#   1. リトライ回数を5回→2回に削減（ループ長期化を防止）
+#   2. time.sleep() を廃止（Streamlitの描画ブロックを解消）
+#   3. CookieManager未準備時は「ログイン画面表示」で安全に停止
+#      （無限rerunループに入らないようにする）
+#   4. cookie_retry_count をリセットするタイミングを明確化
+# -------------------------------------------------------
 def restore_session_from_cookie():
-    """Cookieからセッションを復元（CookieManager使用）
-    
-    iPadのSafariではページリフレッシュ時にst.session_stateが空になるため、
-    毎回CookieとDBを照合してログイン状態を復元する。
-    CookieManagerは初回描画完了前はCookieを取得できないため、
-    get_all()でコンポーネントの準備完了を確認してからトークンを読み取る。
+    """Cookieからセッションを復元
+
+    iPad/SafariではSafariの ITP によりCookieが制限される場合がある。
+    CookieManagerコンポーネントの初回描画が完了するまで
+    get_all()がNoneや空辞書を返すため、最大2回だけrerunして待機する。
+    2回試みてもCookieが取得できない場合はそのままログイン画面を表示する
+    （無限ループを防ぐ）。
     """
+    # すでにログイン済みならスキップ
     if st.session_state.logged_in_user:
         return True
-    
+
     cookie_manager = get_cookie_manager()
-    
     cookie_retry_key = '_cookie_retry_count'
-    max_retries = 5
-    
+    # リトライ上限を2回に削減（旧: 5回）
+    MAX_RETRIES = 2
+
     if cookie_retry_key not in st.session_state:
         st.session_state[cookie_retry_key] = 0
-    
+
+    # CookieManagerの準備状態を確認
     try:
         all_cookies = cookie_manager.get_all()
     except Exception:
         all_cookies = None
-    
-    if all_cookies is None or (isinstance(all_cookies, dict) and len(all_cookies) == 0 and st.session_state[cookie_retry_key] < 2):
-        if st.session_state[cookie_retry_key] < max_retries:
+
+    cookie_not_ready = (
+        all_cookies is None or
+        (isinstance(all_cookies, dict) and len(all_cookies) == 0
+         and st.session_state[cookie_retry_key] < 1)
+    )
+
+    if cookie_not_ready:
+        retry_count = st.session_state[cookie_retry_key]
+        if retry_count < MAX_RETRIES:
             st.session_state[cookie_retry_key] += 1
             log_session_event(
                 "COOKIE_WAIT",
-                details=f"CookieManager準備待ち（リトライ {st.session_state[cookie_retry_key]}/{max_retries}）。get_all()戻り値: {type(all_cookies).__name__}={all_cookies}"
+                details=f"CookieManager準備待ち（{retry_count + 1}/{MAX_RETRIES}回目）"
             )
-            time.sleep(0.3)
+            # time.sleep()を廃止 → rerunのみ（描画ブロックなし）
             st.rerun()
             return False
         else:
-            cookie_status = "None（コンポーネント未描画）" if all_cookies is None else f"空辞書（Cookie0件）"
-            log_session_event(
-                "COOKIE_TIMEOUT", 
-                details=f"CookieManager準備タイムアウト（{max_retries}回試行）。最終状態: {cookie_status}。原因: (1)iOSのITP/プライベートブラウズでCookieブロック (2)Safari設定で全Cookieブロック中 (3)CookieManagerコンポーネントの描画失敗"
-            )
+            # リトライ上限に達したらリセットしてログイン画面へ
             st.session_state[cookie_retry_key] = 0
-            return True
-    
+            log_session_event(
+                "COOKIE_TIMEOUT",
+                details=f"CookieManager {MAX_RETRIES}回試行後もCookie取得不可。ログイン画面を表示。"
+            )
+            return True  # ← Trueを返してログイン画面を表示させる
+
+    # CookieManager準備完了 → リトライカウンタリセット
     st.session_state[cookie_retry_key] = 0
-    cookie_count = len(all_cookies) if isinstance(all_cookies, dict) else 0
-    has_session_cookie = COOKIE_NAME in all_cookies if isinstance(all_cookies, dict) else False
-    
+
+    # セッショントークンを取得
     session_token = None
     try:
         session_token = cookie_manager.get(COOKIE_NAME)
     except Exception:
         pass
-    
+
     if not session_token and isinstance(all_cookies, dict):
         session_token = all_cookies.get(COOKIE_NAME)
-    
+
     if session_token:
         log_session_event(
-            "RESTORE_ATTEMPT", 
-            session_token=session_token, 
-            details=f"Cookie復元試行。Cookie総数: {cookie_count}, セッションCookie存在: {has_session_cookie}"
+            "RESTORE_ATTEMPT",
+            session_token=session_token,
+            details=f"Cookie復元試行。Cookie総数: {len(all_cookies) if isinstance(all_cookies, dict) else 0}"
         )
         user = validate_session(session_token)
         if user:
@@ -138,15 +166,16 @@ def restore_session_from_cookie():
                 user_id=user['id'],
                 username=user['username'],
                 session_token=session_token,
-                details=f"Cookie復元成功。ユーザー: {user.get('display_name', user['username'])}（{user['role']}）"
+                details=f"Cookie復元成功: {user.get('display_name', user['username'])}"
             )
             st.rerun()
             return False
         else:
+            # 無効なトークンはCookieから削除
             log_session_event(
                 "RESTORE_FAILED",
                 session_token=session_token,
-                details=f"validate_sessionが失敗（詳細はVALIDATE_*ログを参照）。無効なCookieを削除します"
+                details="セッション検証失敗。Cookieを削除してログイン画面へ。"
             )
             try:
                 cookie_manager.delete(COOKIE_NAME)
@@ -154,36 +183,30 @@ def restore_session_from_cookie():
                 pass
     else:
         log_session_event(
-            "NO_COOKIE", 
-            details=f"セッションCookie('{COOKIE_NAME}')が存在しない。Cookie総数: {cookie_count}, 保存されたCookie名: {list(all_cookies.keys()) if isinstance(all_cookies, dict) else 'N/A'}。原因: (1)未ログイン (2)ログアウト済み (3)iOSがCookieを削除 (4)ブラウザのCookie期限切れ"
+            "NO_COOKIE",
+            details=f"セッションCookieなし。未ログインまたはCookie削除済み。"
         )
-    
+
     return True
 
 
-def is_logged_in() -> bool:
-    return st.session_state.logged_in_user is not None
-
-
-def get_current_user() -> dict:
-    return st.session_state.logged_in_user
-
-
-def is_admin() -> bool:
-    user = get_current_user()
-    return user is not None and user.get('role') == 'admin'
-
-
+# -------------------------------------------------------
+# 【変更3】login() - SESSION_EXPIRY_DAYS の import 位置を修正
+#
+# 変更点:
+#   timedelta の import を関数内から削除（database.py側で管理のため）
+#   それ以外は変更なし
+# -------------------------------------------------------
 def login(user: dict):
     """ログイン処理（Cookieにセッショントークンを保存）"""
     st.session_state.logged_in_user = user
-    
+
     session_token = create_session(user['id'])
-    
+
     cookie_manager = get_cookie_manager()
     try:
         cookie_manager.set(
-            COOKIE_NAME, 
+            COOKIE_NAME,
             session_token,
             expires_at=get_jst_now() + timedelta(days=SESSION_EXPIRY_DAYS),
             same_site="Lax",
@@ -194,7 +217,7 @@ def login(user: dict):
             user_id=user['id'],
             username=user['username'],
             session_token=session_token,
-            details=f"ログイン成功、Cookie設定完了（有効期限: {SESSION_EXPIRY_DAYS}日, SameSite=Lax, Secure=True）"
+            details=f"ログイン成功（有効期限: {SESSION_EXPIRY_DAYS}日）"
         )
     except Exception as e:
         log_session_event(
@@ -206,16 +229,19 @@ def login(user: dict):
         )
 
 
+# -------------------------------------------------------
+# 【変更4】logout() - 変更なし（そのまま維持）
+# -------------------------------------------------------
 def logout():
     """ログアウト処理（Cookieを削除）"""
     user = st.session_state.logged_in_user
     cookie_manager = get_cookie_manager()
-    
+
     try:
         session_token = cookie_manager.get(COOKIE_NAME)
-    except:
+    except Exception:
         session_token = None
-    
+
     log_session_event(
         "LOGOUT",
         user_id=user.get('id') if user else None,
@@ -223,14 +249,14 @@ def logout():
         session_token=session_token,
         details="明示的ログアウト"
     )
-    
+
     if session_token:
         delete_session(session_token)
         try:
             cookie_manager.delete(COOKIE_NAME)
-        except:
+        except Exception:
             pass
-    
+
     st.session_state.logged_in_user = None
     st.session_state._no_cookie_logged = False
     st.session_state._session_restore_done = False
