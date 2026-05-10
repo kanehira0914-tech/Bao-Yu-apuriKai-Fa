@@ -521,6 +521,10 @@ if 'care_data_loaded' not in st.session_state:
 if 'renrakucho_temp_save' not in st.session_state:
     st.session_state.renrakucho_temp_save = {}
 
+    if 'last_record_date' not in st.session_state:
+        st.session_state.last_record_date = None
+    if 'last_record_filter_type' not in st.session_state:
+        st.session_state.last_record_filter_type = "日付指定"
 def load_care_data_to_session(reservation_id: int, force_reload: bool = False):
     """DBからケア記録を読み込んでsession_stateにセット"""
     rid = reservation_id
@@ -1298,44 +1302,92 @@ def show_reservations():
 
 def show_record_input():
     st.markdown('<div class="main-header">📝 実績入力</div>', unsafe_allow_html=True)
-    
+
     if st.session_state.selected_reservation_id:
         show_detail_input(st.session_state.selected_reservation_id)
     else:
         st.info("👇 児童を選択してください")
-        
+
         today = date.today()
-        
+
         st.markdown("**📅 日付選択**")
+
+        # 前回の選択を復元（デフォルトは「今日」）
+        default_filter = st.session_state.get('last_record_filter_type', '今日')
+        filter_options = ["今日", "日付指定", "月指定"]
+        default_filter_idx = filter_options.index(default_filter) if default_filter in filter_options else 0
+
         filter_type = st.radio(
             "表示期間",
-            ["今日", "日付指定", "月指定"],
+            filter_options,
+            index=default_filter_idx,
             horizontal=True,
             key="rec_filter_type"
         )
-        
+
+        # フィルタ種別をセッションに保存
+        st.session_state.last_record_filter_type = filter_type
+
         facility = get_current_facility()
-        
+
         if filter_type == "今日":
             reservations = get_reservations_by_date(today.isoformat(), facility)
             st.info(f"📅 {today.strftime('%Y年%m月%d日')}（今日）の予約")
+            # 今日を記憶
+            st.session_state.last_record_date = today
+
         elif filter_type == "日付指定":
-            selected_date = st.date_input("日付を選択", value=today, key="rec_date")
+            # 前回選択した日付を復元（なければ今日）
+            default_date = st.session_state.get('last_record_date') or today
+            # dateオブジェクトでない場合（文字列など）は変換
+            if isinstance(default_date, str):
+                try:
+                    from datetime import datetime as _dt
+                    default_date = _dt.strptime(default_date, "%Y-%m-%d").date()
+                except Exception:
+                    default_date = today
+
+            selected_date = st.date_input("日付を選択", value=default_date, key="rec_date")
             reservations = get_reservations_by_date(selected_date.isoformat(), facility)
             st.info(f"📅 {selected_date.strftime('%Y年%m月%d日')}の予約")
-        else:
+            # 選択した日付を記憶
+            st.session_state.last_record_date = selected_date
+
+        else:  # 月指定
+            ref_date = st.session_state.get('last_record_date') or today
+            if isinstance(ref_date, str):
+                try:
+                    from datetime import datetime as _dt
+                    ref_date = _dt.strptime(ref_date, "%Y-%m-%d").date()
+                except Exception:
+                    ref_date = today
+
             col1, col2 = st.columns(2)
             with col1:
-                sel_year = st.selectbox("年", range(today.year - 1, today.year + 2), index=1, key="rec_year")
+                sel_year = st.selectbox(
+                    "年",
+                    range(today.year - 1, today.year + 2),
+                    index=list(range(today.year - 1, today.year + 2)).index(ref_date.year)
+                          if ref_date.year in range(today.year - 1, today.year + 2) else 1,
+                    key="rec_year"
+                )
             with col2:
-                sel_month = st.selectbox("月", range(1, 13), index=today.month - 1, key="rec_month")
+                sel_month = st.selectbox(
+                    "月",
+                    range(1, 13),
+                    index=ref_date.month - 1,
+                    key="rec_month"
+                )
             reservations = get_reservations_by_month(sel_year, sel_month, facility)
             st.info(f"📅 {sel_year}年{sel_month}月の予約")
-        
+            # 月の1日を記憶
+            from datetime import date as _date
+            st.session_state.last_record_date = _date(sel_year, sel_month, 1)
+
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
+
         active_reservations = [r for r in reservations if not r.get('is_cancelled')]
-        
+
         if active_reservations:
             st.markdown(f"### 📋 予約一覧（{len(active_reservations)}件）")
             for res in active_reservations:
@@ -1350,7 +1402,14 @@ def show_detail_input(reservation_id: int):
         st.error("予約が見つかりません")
         st.session_state.selected_reservation_id = None
         return
-    
+    if res.get('reservation_date'):
+        try:
+            from datetime import datetime as _dt
+            saved_date = _dt.strptime(res['reservation_date'], "%Y-%m-%d").date()
+            st.session_state.last_record_date = saved_date
+            st.session_state.last_record_filter_type = "日付指定"
+        except Exception:
+            pass
     load_care_data_to_session(reservation_id)
     
     if st.button("← 戻る", use_container_width=True):
