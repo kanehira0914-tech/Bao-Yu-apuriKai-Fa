@@ -262,10 +262,27 @@ def logout():
     st.session_state._session_restore_done = False
     st.session_state._mismatch_logged = False
 
+def is_logged_in() -> bool:
+    return st.session_state.logged_in_user is not None
+
+
+def get_current_user() -> dict:
+    return st.session_state.logged_in_user
+
+
+def is_admin() -> bool:
+    user = get_current_user()
+    return user is not None and user.get('role') == 'admin'
+
 
 def get_current_facility() -> str:
     return st.session_state.get('current_facility', DEFAULT_FACILITY)
 
+
+def get_facility_display_name(facility_id: str) -> str:
+    return FACILITY_OPTIONS.get(facility_id, facility_id)
+def get_current_facility() -> str:
+    return st.session_state.get('current_facility', DEFAULT_FACILITY)
 
 def get_facility_display_name(facility_id: str) -> str:
     return FACILITY_OPTIONS.get(facility_id, facility_id)
